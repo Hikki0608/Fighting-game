@@ -84,6 +84,17 @@ func reset_for_round(spawn_position: Vector2) -> void:
 	attack_connected = false
 	combo_received = 0
 	last_hit_result = ""
+	previous_buttons = {
+		"light": false,
+		"heavy": false,
+		"special": false,
+		"throw": false
+	}
+	intent = {
+		"axis": Vector2.ZERO,
+		"buttons": previous_buttons.duplicate(),
+		"pressed": previous_buttons.duplicate()
+	}
 	input_history.clear()
 	queue_redraw()
 
@@ -122,6 +133,25 @@ func capture_input() -> void:
 	buttons.heavy = buttons.heavy or Input.is_joy_button_pressed(player_id, JOY_BUTTON_Y)
 	buttons.special = buttons.special or Input.is_joy_button_pressed(player_id, JOY_BUTTON_B)
 	buttons.throw = buttons.throw or Input.is_joy_button_pressed(player_id, JOY_BUTTON_LEFT_SHOULDER)
+	_commit_input(axis, buttons)
+
+
+func apply_virtual_input(axis: Vector2, requested_buttons: Dictionary = {}) -> void:
+	var buttons := {
+		"light": bool(requested_buttons.get("light", false)),
+		"heavy": bool(requested_buttons.get("heavy", false)),
+		"special": bool(requested_buttons.get("special", false)),
+		"throw": bool(requested_buttons.get("throw", false))
+	}
+	_commit_input(axis, buttons)
+
+
+func clear_input() -> void:
+	apply_virtual_input(Vector2.ZERO)
+
+
+func _commit_input(raw_axis: Vector2, buttons: Dictionary) -> void:
+	var axis := raw_axis
 
 	axis.x = 0.0 if absf(axis.x) < 0.28 else signf(axis.x)
 	axis.y = 0.0 if absf(axis.y) < 0.28 else signf(axis.y)
