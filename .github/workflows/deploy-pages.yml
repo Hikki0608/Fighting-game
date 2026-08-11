@@ -61,7 +61,8 @@ jobs:
 
       - name: Import and validate project
         shell: bash
-        run: "${GODOT_EDITOR}" --headless --path . --import
+        run: |
+          "${GODOT_EDITOR}" --headless --path . --import
 
       - name: Export Web game
         shell: bash
