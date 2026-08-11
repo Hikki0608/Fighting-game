@@ -1,15 +1,18 @@
 extends Node2D
 
 const FighterScene := preload("res://scripts/fighter.gd")
+const CpuControllerScript := preload("res://scripts/cpu_controller.gd")
 const SCREEN_SIZE := Vector2(1152.0, 648.0)
 const ROUND_SECONDS := 99
 const ROUNDS_TO_WIN := 2
+const MODE_SOLO: StringName = &"solo"
+const MODE_VERSUS: StringName = &"versus"
 
 var fighters: Array[Fighter] = []
 var wins := [0, 0]
 var round_number := 1
 var round_frames := ROUND_SECONDS * 60
-var phase: StringName = &"intro"
+var phase: StringName = &"menu"
 var phase_frames := 120
 var global_hitstop := 0
 var training_visible := false
@@ -17,18 +20,28 @@ var screen_shake := 0.0
 var hit_sparks: Array[Dictionary] = []
 var announcement := "ROUND 1"
 var announcement_sub := ""
+var game_mode: StringName = MODE_SOLO
+var mode_selection := 0
+var cpu_controller: CpuController
+var meta_key_state := {}
 
 var announcement_label: Label
 var subtitle_label: Label
 var help_label: Label
 var training_label: Label
+var mode_label: Label
+var menu_layer: CanvasLayer
+var solo_button: Button
+var versus_button: Button
 
 
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(Color("071018"))
+	cpu_controller = CpuControllerScript.new() as CpuController
 	_create_fighters()
 	_create_ui()
-	_start_round()
+	_create_mode_menu()
+	_show_mode_menu()
 	queue_redraw()
 
 
@@ -68,8 +81,16 @@ func _create_ui() -> void:
 	help_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	help_label.add_theme_font_size_override("font_size", 15)
 	help_label.add_theme_color_override("font_color", Color("91acb7"))
-	help_label.text = "P1  A/D move  W jump  S crouch  F light  G heavy  H special  R throw     |     P2  Arrows  J/K/L/I     |     F1 frame data"
+	help_label.text = "P1  A/D move  W jump  S crouch  F light  G heavy  H special  R throw"
 	add_child(help_label)
+
+	mode_label = Label.new()
+	mode_label.position = Vector2(426.0, 8.0)
+	mode_label.size = Vector2(300.0, 24.0)
+	mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mode_label.add_theme_font_size_override("font_size", 13)
+	mode_label.add_theme_color_override("font_color", Color("91acb7"))
+	add_child(mode_label)
 
 	training_label = Label.new()
 	training_label.position = Vector2(24.0, 126.0)
@@ -83,10 +104,97 @@ func _create_ui() -> void:
 	add_child(training_label)
 
 
+func _create_mode_menu() -> void:
+	menu_layer = CanvasLayer.new()
+	menu_layer.layer = 10
+	add_child(menu_layer)
+
+	var backdrop := ColorRect.new()
+	backdrop.position = Vector2.ZERO
+	backdrop.size = SCREEN_SIZE
+	backdrop.color = Color(0.015, 0.045, 0.07, 0.94)
+	menu_layer.add_child(backdrop)
+
+	var title := Label.new()
+	title.position = Vector2(226.0, 92.0)
+	title.size = Vector2(700.0, 86.0)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.text = "FRAMEBREAK"
+	title.add_theme_font_size_override("font_size", 64)
+	title.add_theme_color_override("font_color", Color("fff3c4"))
+	title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	title.add_theme_constant_override("shadow_offset_x", 5)
+	title.add_theme_constant_override("shadow_offset_y", 5)
+	menu_layer.add_child(title)
+
+	var subtitle := Label.new()
+	subtitle.position = Vector2(326.0, 174.0)
+	subtitle.size = Vector2(500.0, 42.0)
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	subtitle.text = "SELECT BATTLE MODE"
+	subtitle.add_theme_font_size_override("font_size", 22)
+	subtitle.add_theme_color_override("font_color", Color("91ddea"))
+	menu_layer.add_child(subtitle)
+
+	solo_button = _make_mode_button("1 PLAYER   •   VS CPU", Vector2(326.0, 260.0))
+	versus_button = _make_mode_button("2 PLAYERS   •   LOCAL VERSUS", Vector2(326.0, 350.0))
+	solo_button.pressed.connect(_start_solo_mode)
+	versus_button.pressed.connect(_start_versus_mode)
+	menu_layer.add_child(solo_button)
+	menu_layer.add_child(versus_button)
+
+	var hint := Label.new()
+	hint.position = Vector2(226.0, 475.0)
+	hint.size = Vector2(700.0, 70.0)
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.text = "UP / DOWN OR W / S TO CHOOSE    •    ENTER TO START\nPRESS M DURING A MATCH TO RETURN HERE"
+	hint.add_theme_font_size_override("font_size", 16)
+	hint.add_theme_color_override("font_color", Color("91acb7"))
+	menu_layer.add_child(hint)
+
+
+func _make_mode_button(button_text: String, button_position: Vector2) -> Button:
+	var button := Button.new()
+	button.position = button_position
+	button.size = Vector2(500.0, 68.0)
+	button.text = button_text
+	button.focus_mode = Control.FOCUS_ALL
+	button.add_theme_font_size_override("font_size", 22)
+	button.add_theme_color_override("font_color", Color("d8f7ff"))
+	button.add_theme_color_override("font_hover_color", Color("fff3c4"))
+	button.add_theme_color_override("font_focus_color", Color("fff3c4"))
+	button.add_theme_stylebox_override("normal", _make_button_style(Color("102b35"), Color("2f6572"), 2))
+	button.add_theme_stylebox_override("hover", _make_button_style(Color("16404c"), Color("61d5e3"), 3))
+	button.add_theme_stylebox_override("pressed", _make_button_style(Color("1d4b57"), Color("fff3c4"), 3))
+	button.add_theme_stylebox_override("focus", _make_button_style(Color("153945"), Color("fff3c4"), 4))
+	return button
+
+
+func _make_button_style(fill: Color, border: Color, border_width: int) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = fill
+	style.border_color = border
+	style.set_border_width_all(border_width)
+	style.set_corner_radius_all(8)
+	return style
+
+
 func _physics_process(_delta: float) -> void:
 	_handle_system_input()
-	for fighter in fighters:
-		fighter.capture_input()
+	if phase == &"menu":
+		_update_ui()
+		queue_redraw()
+		return
+
+	fighters[0].capture_input()
+	if game_mode == MODE_SOLO:
+		if phase == &"fight":
+			var cpu_intent := cpu_controller.build_intent(fighters[1], fighters[0])
+			fighters[1].apply_virtual_input(cpu_intent.axis, cpu_intent.buttons)
+		else:
+			fighters[1].clear_input()
+	else:
+		fighters[1].capture_input()
 
 	if global_hitstop > 0:
 		global_hitstop -= 1
@@ -125,12 +233,22 @@ func _physics_process(_delta: float) -> void:
 
 
 func _handle_system_input() -> void:
-	if _meta_key_just_pressed(&"f1"):
+	if phase == &"menu":
+		_handle_mode_menu_input()
+		return
+
+	var menu_pressed := _key_just_pressed(KEY_M)
+	menu_pressed = _key_just_pressed(KEY_ESCAPE) or menu_pressed
+	if menu_pressed:
+		_show_mode_menu()
+		return
+
+	if _key_just_pressed(KEY_F1):
 		training_visible = not training_visible
 		training_label.visible = training_visible
 		for fighter in fighters:
 			fighter.set_debug_boxes(training_visible)
-	if _meta_key_just_pressed(&"enter"):
+	if _key_just_pressed(KEY_ENTER):
 		if phase == &"match_over":
 			wins = [0, 0]
 			round_number = 1
@@ -139,15 +257,85 @@ func _handle_system_input() -> void:
 			_start_round()
 
 
-var meta_key_state := {&"f1": false, &"enter": false}
+func _handle_mode_menu_input() -> void:
+	var up_pressed := _key_just_pressed(KEY_UP)
+	up_pressed = _key_just_pressed(KEY_W) or up_pressed
+	var down_pressed := _key_just_pressed(KEY_DOWN)
+	down_pressed = _key_just_pressed(KEY_S) or down_pressed
+	var confirm_pressed := _key_just_pressed(KEY_ENTER)
+	confirm_pressed = _key_just_pressed(KEY_SPACE) or confirm_pressed
+
+	if up_pressed or down_pressed:
+		mode_selection = 1 - mode_selection
+		_update_mode_selection()
+	if confirm_pressed:
+		if mode_selection == 0:
+			_start_solo_mode()
+		else:
+			_start_versus_mode()
 
 
-func _meta_key_just_pressed(key_name: StringName) -> bool:
-	var keycode := KEY_F1 if key_name == &"f1" else KEY_ENTER
-	var down := Input.is_key_pressed(keycode)
-	var was_down: bool = meta_key_state[key_name]
-	meta_key_state[key_name] = down
+func _key_just_pressed(keycode: Key) -> bool:
+	var down := Input.is_physical_key_pressed(keycode)
+	var was_down := bool(meta_key_state.get(keycode, false))
+	meta_key_state[keycode] = down
 	return down and not was_down
+
+
+func _show_mode_menu() -> void:
+	phase = &"menu"
+	position = Vector2.ZERO
+	screen_shake = 0.0
+	global_hitstop = 0
+	hit_sparks.clear()
+	training_visible = false
+	training_label.visible = false
+	announcement_label.visible = false
+	subtitle_label.visible = false
+	help_label.visible = false
+	mode_label.visible = false
+	menu_layer.visible = true
+	mode_selection = 0
+	for fighter in fighters:
+		fighter.visible = false
+		fighter.clear_input()
+		fighter.set_debug_boxes(false)
+	_update_mode_selection()
+
+
+func _update_mode_selection() -> void:
+	if mode_selection == 0:
+		solo_button.grab_focus()
+	else:
+		versus_button.grab_focus()
+
+
+func _start_solo_mode() -> void:
+	_start_match(MODE_SOLO)
+
+
+func _start_versus_mode() -> void:
+	_start_match(MODE_VERSUS)
+
+
+func _start_match(selected_mode: StringName) -> void:
+	game_mode = selected_mode
+	menu_layer.visible = false
+	announcement_label.visible = true
+	subtitle_label.visible = true
+	help_label.visible = true
+	mode_label.visible = true
+	for fighter in fighters:
+		fighter.visible = true
+
+	fighters[0].fighter_name = "PLAYER 1"
+	fighters[1].fighter_name = "CPU" if game_mode == MODE_SOLO else "PLAYER 2"
+	wins = [0, 0]
+	round_number = 1
+	training_visible = false
+	training_label.visible = false
+	cpu_controller.reset()
+	_start_round()
 
 
 func _start_round() -> void:
@@ -156,6 +344,7 @@ func _start_round() -> void:
 	round_frames = ROUND_SECONDS * 60
 	global_hitstop = 0
 	hit_sparks.clear()
+	cpu_controller.reset()
 	fighters[0].facing = 1
 	fighters[1].facing = -1
 	fighters[0].reset_for_round(Vector2(330.0, Fighter.GROUND_Y))
@@ -184,7 +373,7 @@ func _finish_round() -> void:
 	if winner >= 0 and wins[winner] >= ROUNDS_TO_WIN:
 		phase = &"match_over"
 		announcement = "%s WINS" % fighters[winner].fighter_name
-		announcement_sub = "PRESS ENTER TO REMATCH"
+		announcement_sub = "PRESS ENTER TO REMATCH  •  M FOR MODE SELECT"
 	else:
 		phase = &"round_over"
 		phase_frames = 180
@@ -243,6 +432,12 @@ func _update_effects() -> void:
 func _update_ui() -> void:
 	announcement_label.text = announcement
 	subtitle_label.text = announcement_sub
+	if game_mode == MODE_SOLO:
+		mode_label.text = "1 PLAYER  •  CPU STANDARD"
+		help_label.text = "P1  A/D move  W/S jump/crouch  F light  G heavy  H special  R throw     |     F1 frame data  •  M mode select"
+	else:
+		mode_label.text = "2 PLAYERS  •  LOCAL VERSUS"
+		help_label.text = "P1  A/D W/S F/G/H/R     |     P2  Arrows J/K/L/I     |     F1 frame data  •  M mode select"
 	if phase == &"fight" and announcement_sub.ends_with("HIT COMBO"):
 		# The combo text is transient and clears when the defender recovers.
 		if fighters[0].combo_received == 0 and fighters[1].combo_received == 0:
@@ -280,8 +475,8 @@ func _draw() -> void:
 	draw_rect(Rect2(654, 40, 450, 34), Color("ffd5e2"), false, 2.0)
 
 	var font := ThemeDB.fallback_font
-	draw_string(font, Vector2(50, 99), "PLAYER 1", HORIZONTAL_ALIGNMENT_LEFT, -1, 19, Color("d6f7ff"))
-	draw_string(font, Vector2(654, 99), "PLAYER 2", HORIZONTAL_ALIGNMENT_RIGHT, 448, 19, Color("ffd5e2"))
+	draw_string(font, Vector2(50, 99), fighters[0].fighter_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 19, Color("d6f7ff"))
+	draw_string(font, Vector2(654, 99), fighters[1].fighter_name, HORIZONTAL_ALIGNMENT_RIGHT, 448, 19, Color("ffd5e2"))
 	var timer_text := "%02d" % ceili(float(round_frames) / 60.0)
 	draw_string(font, Vector2(516, 76), timer_text, HORIZONTAL_ALIGNMENT_CENTER, 120, 36, Color("fff3c4"))
 	for i in wins[0]:
