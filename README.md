@@ -3,6 +3,13 @@
 Godot 4で制作する、商品レベルの2D対戦格闘ゲームを目指すプロジェクトです。
 現在は、ゲームの面白さと操作感を検証するための最初のプレイアブル版です。
 
+## ブラウザで無料プレイ
+
+[Framebreak Prototypeをブラウザで起動](https://hikki0608.github.io/Fighting-game/)
+
+PC版のChromeまたはFirefoxを推奨します。`main` ブランチが更新されると、GitHub Actionsが
+GodotのWeb版を自動生成してGitHub Pagesへ公開します。
+
 ## 現在遊べる内容
 
 - 2人ローカル対戦（キーボード／ゲームパッド）
@@ -15,7 +22,7 @@ Godot 4で制作する、商品レベルの2D対戦格闘ゲームを目指す�
 - 99カウント、ラウンド制、KO、タイムアップ、再戦
 - F1でヒットボックスとリアルタイムフレーム情報を表示
 
-## 起動方法
+## ローカルでの起動方法
 
 1. [Godot Engine 4.x](https://godotengine.org/) をインストールします。
 2. Godot Project Managerでこのフォルダの `project.godot` をインポートします。

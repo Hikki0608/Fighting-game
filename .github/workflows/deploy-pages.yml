@@ -1,0 +1,94 @@
+name: Build and deploy Web game
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: "4.4.1"
+  GODOT_STATUS: stable
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Install Godot and Web export templates
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          release="${GODOT_VERSION}-${GODOT_STATUS}"
+          editor_archive="Godot_v${release}_linux.x86_64.zip"
+          templates_archive="Godot_v${release}_export_templates.tpz"
+          release_url="https://github.com/godotengine/godot/releases/download/${release}"
+
+          curl --fail --location --retry 3 \
+            "${release_url}/${editor_archive}" \
+            --output godot-editor.zip
+          curl --fail --location --retry 3 \
+            "${release_url}/${templates_archive}" \
+            --output godot-templates.tpz
+
+          mkdir -p .godot-bin .godot-templates
+          unzip -q godot-editor.zip -d .godot-bin
+          unzip -q godot-templates.tpz -d .godot-templates
+
+          editor=".godot-bin/Godot_v${release}_linux.x86_64"
+          chmod +x "${editor}"
+          echo "GODOT_EDITOR=${editor}" >> "${GITHUB_ENV}"
+
+          template_dir="${HOME}/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_STATUS}"
+          mkdir -p "${template_dir}"
+          cp -R .godot-templates/templates/. "${template_dir}/"
+
+      - name: Import and validate project
+        shell: bash
+        run: "${GODOT_EDITOR}" --headless --path . --import
+
+      - name: Export Web game
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/web
+          "${GODOT_EDITOR}" --headless --path . --export-release Web build/web/index.html
+          touch build/web/.nojekyll
+          test -s build/web/index.html
+          test -s build/web/index.wasm
+          test -s build/web/index.pck
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: build/web
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
