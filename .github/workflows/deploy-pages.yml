@@ -2,8 +2,9 @@ name: Build and deploy Web game
 
 on:
   push:
-    branches: [main]
-  pull_request:
+    branches:
+      - main
+      - "agent/**"
   workflow_dispatch:
 
 permissions:
@@ -79,7 +80,7 @@ jobs:
           path: build/web
 
   deploy:
-    if: github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
     permissions:
