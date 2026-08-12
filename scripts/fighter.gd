@@ -34,7 +34,22 @@ const ATTACKS := {
 		"startup": 5, "active": 2, "recovery": 24,
 		"damage": 135, "chip": 0, "hitstun": 32, "blockstun": 0,
 		"range": 56.0, "height": 96.0, "push": 72.0,
-		"hitstop": 15, "label": "THROW", "unblockable": true
+		"hitstop": 15, "label": "THROW", "unblockable": true,
+		"knockdown": true, "launch_y": -330.0, "bottom_offset": 8.0
+	},
+	&"jump_light": {
+		"startup": 5, "active": 5, "recovery": 10,
+		"damage": 58, "chip": 0, "hitstun": 17, "blockstun": 10,
+		"range": 82.0, "height": 72.0, "push": 18.0,
+		"hitstop": 8, "label": "JUMP LIGHT", "airborne": true,
+		"bottom_offset": -4.0
+	},
+	&"jump_heavy": {
+		"startup": 9, "active": 6, "recovery": 17,
+		"damage": 104, "chip": 0, "hitstun": 25, "blockstun": 14,
+		"range": 104.0, "height": 92.0, "push": 34.0,
+		"hitstop": 12, "label": "JUMP HEAVY", "airborne": true,
+		"bottom_offset": -12.0
 	}
 }
 
@@ -63,6 +78,8 @@ var input_history: Array[Vector2] = []
 var debug_boxes := false
 var combo_received := 0
 var last_hit_result := ""
+var throw_backwards := false
+var air_attack_used := false
 
 
 func setup(id: int, display_name: String, color: Color, spawn_position: Vector2) -> void:
@@ -84,6 +101,8 @@ func reset_for_round(spawn_position: Vector2) -> void:
 	attack_connected = false
 	combo_received = 0
 	last_hit_result = ""
+	throw_backwards = false
+	air_attack_used = false
 	previous_buttons = {
 		"light": false,
 		"heavy": false,
@@ -188,14 +207,19 @@ func simulate(opponent: Fighter, accepting_input: bool) -> void:
 func _step_neutral(opponent: Fighter) -> void:
 	if not is_on_ground():
 		state = &"jump"
-		if intent.pressed.light:
-			change_state(&"light")
-		elif intent.pressed.heavy:
-			change_state(&"heavy")
+		if not air_attack_used and intent.pressed.light:
+			air_attack_used = true
+			change_state(&"jump_light")
+			return
+		if not air_attack_used and intent.pressed.heavy:
+			air_attack_used = true
+			change_state(&"jump_heavy")
+			return
 		velocity.x = intent.axis.x * WALK_SPEED * 0.72
 		return
 
 	if intent.pressed.throw:
+		throw_backwards = intent.axis.x * float(facing) < -0.5
 		change_state(&"throw")
 		return
 	if intent.pressed.special or (intent.pressed.heavy and _has_quarter_circle_forward()):
@@ -229,10 +253,14 @@ func _step_neutral(opponent: Fighter) -> void:
 
 func _step_attack() -> void:
 	state_frame += 1
-	velocity.x = move_toward(velocity.x, 0.0, 48.0)
+	var data := current_attack()
+	if bool(data.get("airborne", false)):
+		var air_target_speed: float = intent.axis.x * WALK_SPEED * 0.62
+		velocity.x = move_toward(velocity.x, air_target_speed, 18.0)
+	else:
+		velocity.x = move_toward(velocity.x, 0.0, 48.0)
 	if state == &"special" and state_frame >= 5 and state_frame <= 16 and is_on_ground():
 		velocity.x = facing * 350.0
-	var data: Dictionary = ATTACKS[state]
 	var total: int = data.startup + data.active + data.recovery
 	if state_frame >= total:
 		state = &"idle" if is_on_ground() else &"jump"
@@ -272,13 +300,21 @@ func _apply_physics() -> void:
 	if position.y >= GROUND_Y:
 		position.y = GROUND_Y
 		velocity.y = 0.0
+		if state == &"jump" or is_air_attack():
+			state = &"idle"
+			state_frame = 0
+			attack_connected = false
+			air_attack_used = false
+			velocity.x = move_toward(velocity.x, 0.0, 90.0)
 
 
 func change_state(next_state: StringName) -> void:
 	state = next_state
 	state_frame = 0
 	attack_connected = false
-	if ATTACKS.has(next_state):
+	if next_state != &"throw":
+		throw_backwards = false
+	if ATTACKS.has(next_state) and not bool(ATTACKS[next_state].get("airborne", false)):
 		velocity.x = 0.0
 
 
@@ -290,7 +326,17 @@ func is_attack_active() -> bool:
 
 
 func current_attack() -> Dictionary:
-	return ATTACKS.get(state, {})
+	if not ATTACKS.has(state):
+		return {}
+	var data: Dictionary = ATTACKS[state]
+	if state == &"throw" and throw_backwards:
+		var back_throw := data.duplicate()
+		back_throw.label = "BACK THROW"
+		back_throw.push = 150.0
+		back_throw.launch_y = -390.0
+		back_throw.back_throw = true
+		return back_throw
+	return data
 
 
 func attack_rect() -> Rect2:
@@ -300,7 +346,8 @@ func attack_rect() -> Rect2:
 	var attack_range: float = data.range
 	var attack_height: float = data.height
 	var x := position.x + BODY_WIDTH * 0.32 if facing > 0 else position.x - BODY_WIDTH * 0.32 - attack_range
-	var y := position.y - attack_height - (22.0 if state != &"throw" else 8.0)
+	var bottom_offset: float = float(data.get("bottom_offset", 22.0))
+	var y := position.y - attack_height - bottom_offset
 	return Rect2(x, y, attack_range, attack_height)
 
 
@@ -311,24 +358,27 @@ func hurt_rect() -> Rect2:
 	return Rect2(position.x - BODY_WIDTH * 0.5, position.y - height, BODY_WIDTH, height)
 
 
-func receive_attack(data: Dictionary, attacker_x: float) -> Dictionary:
+func receive_attack(data: Dictionary, attacker_x: float, forced_push_direction := 0.0) -> Dictionary:
 	var unblockable: bool = data.get("unblockable", false)
 	var blocked := not unblockable and _is_blocking(attacker_x)
 	var damage: int = int(data.chip) if blocked else int(data.damage)
 	health = maxi(0, health - damage)
 	state_frame = 0
 	attack_connected = false
-	velocity.x = signf(position.x - attacker_x) * float(data.push) * (0.65 if blocked else 1.0)
+	var push_direction := signf(position.x - attacker_x)
+	if absf(forced_push_direction) > 0.1:
+		push_direction = signf(forced_push_direction)
+	velocity.x = push_direction * float(data.push) * (0.65 if blocked else 1.0)
 
 	if blocked:
 		state = &"blockstun"
 		last_hit_result = "BLOCK:%d" % int(data.blockstun)
 	else:
 		combo_received += 1
-		state = &"knockdown" if health <= 0 or data.get("label", "") == "THROW" else &"hitstun"
+		state = &"knockdown" if health <= 0 or bool(data.get("knockdown", false)) else &"hitstun"
 		last_hit_result = "HIT:%d" % int(data.hitstun)
 		if state == &"knockdown":
-			velocity.y = -330.0
+			velocity.y = float(data.get("launch_y", -330.0))
 
 	queue_redraw()
 	return {
@@ -336,7 +386,9 @@ func receive_attack(data: Dictionary, attacker_x: float) -> Dictionary:
 		"damage": damage,
 		"ko": health <= 0,
 		"hitstop": int(data.hitstop),
-		"combo": combo_received
+		"combo": combo_received,
+		"label": str(data.get("label", "HIT")),
+		"back_throw": bool(data.get("back_throw", false))
 	}
 
 
@@ -351,6 +403,10 @@ func set_debug_boxes(enabled: bool) -> void:
 
 func is_on_ground() -> bool:
 	return position.y >= GROUND_Y - 0.1
+
+
+func is_air_attack() -> bool:
+	return ATTACKS.has(state) and bool(ATTACKS[state].get("airborne", false))
 
 
 func _can_turn() -> bool:
@@ -378,7 +434,7 @@ func _has_quarter_circle_forward() -> bool:
 
 func frame_data_text() -> String:
 	if ATTACKS.has(state):
-		var data: Dictionary = ATTACKS[state]
+		var data := current_attack()
 		return "%s  %02d/%02d  S:%d A:%d R:%d" % [
 			str(data.label), state_frame,
 			int(data.startup + data.active + data.recovery),
@@ -388,13 +444,17 @@ func frame_data_text() -> String:
 
 
 func _draw() -> void:
-	# Shadow.
-	draw_set_transform(Vector2(0, -2), 0.0, Vector2(1.45, 0.30))
+	# The shadow stays on the arena floor while the fighter jumps.
+	var shadow_y := GROUND_Y - position.y - 2.0
+	var shadow_scale := clampf(1.0 - absf(GROUND_Y - position.y) / 420.0, 0.48, 1.0)
+	draw_set_transform(Vector2(0, shadow_y), 0.0, Vector2(1.45 * shadow_scale, 0.30 * shadow_scale))
 	draw_circle(Vector2.ZERO, 30.0, Color(0.0, 0.0, 0.0, 0.28))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	var crouch_offset := 30.0 if state == &"crouch" else 0.0
 	var lean := 13.0 * facing if state == &"special" else 0.0
+	if state == &"throw" and throw_backwards:
+		lean = -9.0 * facing
 	var body_rect := Rect2(-25.0 + lean, -98.0 + crouch_offset, 50.0, 80.0 - crouch_offset)
 	if state == &"knockdown":
 		body_rect = Rect2(-55.0, -30.0, 110.0, 28.0)
@@ -407,12 +467,26 @@ func _draw() -> void:
 		draw_circle(Vector2(lean + facing * 8.0, -120.0 + crouch_offset), 3.2, Color("10202d"))
 
 		var front_hand := Vector2(facing * 32.0 + lean, -77.0 + crouch_offset)
-		if ATTACKS.has(state):
+		if state == &"jump_light":
+			var jab_extension := clampf(float(state_frame) / 6.0, 0.0, 1.0)
+			front_hand = Vector2(facing * (34.0 + 50.0 * jab_extension), -88.0)
+		elif ATTACKS.has(state) and state != &"jump_heavy":
 			front_hand.x += facing * minf(48.0, state_frame * 7.0)
 		draw_line(Vector2(lean, -80.0 + crouch_offset), front_hand, accent_color, 10.0)
 		draw_circle(front_hand, 10.0, Color("fff4b8") if state == &"special" else body_color.lightened(0.35))
-		draw_line(Vector2(-12.0, -20.0), Vector2(-20.0, 0.0), accent_color, 10.0)
-		draw_line(Vector2(12.0, -20.0), Vector2(20.0, 0.0), accent_color, 10.0)
+
+		if state == &"jump_heavy":
+			var kick_extension := sin(clampf(float(state_frame) / 18.0, 0.0, 1.0) * PI)
+			var kick_foot := Vector2(facing * (34.0 + 55.0 * kick_extension), -34.0 + 18.0 * kick_extension)
+			draw_line(Vector2(facing * 10.0, -24.0), kick_foot, accent_color, 12.0)
+			draw_circle(kick_foot, 9.0, Color("fff4b8"))
+			draw_line(Vector2(-facing * 8.0, -24.0), Vector2(-facing * 25.0, -5.0), accent_color, 10.0)
+		elif not is_on_ground():
+			draw_line(Vector2(-12.0, -22.0), Vector2(-25.0, -4.0), accent_color, 10.0)
+			draw_line(Vector2(12.0, -22.0), Vector2(27.0, -9.0), accent_color, 10.0)
+		else:
+			draw_line(Vector2(-12.0, -20.0), Vector2(-20.0, 0.0), accent_color, 10.0)
+			draw_line(Vector2(12.0, -20.0), Vector2(20.0, 0.0), accent_color, 10.0)
 
 	if state == &"blockstun":
 		draw_arc(Vector2(facing * -29.0, -70.0), 42.0, -1.5, 1.5, 18, Color("9bf6ff"), 5.0)
