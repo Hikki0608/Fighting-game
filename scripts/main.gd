@@ -12,58 +12,51 @@ const WEB_FULLSCREEN_HELPER := """
 (() => {
 	const helperName = "FramebreakFullscreen";
 	if (window[helperName]) return;
+	const styleId = "framebreak-fullscreen-style";
+	const fullscreenElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+	const setState = (state) => {
+		document.documentElement.dataset.framebreakFullscreen = state;
+	};
+	const syncState = () => setState(fullscreenElement() ? "active" : "windowed");
 
-	const canvas = document.getElementById("canvas");
-	if (!canvas) {
-		console.warn("Framebreak: the game canvas was not found.");
-		return;
+	if (!document.getElementById(styleId)) {
+		const style = document.createElement("style");
+		style.id = styleId;
+		style.textContent = `
+			:fullscreen, :-webkit-full-screen {
+				background: #000;
+			}
+			:fullscreen body, :-webkit-full-screen body {
+				margin: 0;
+				overflow: hidden;
+				background: #000;
+			}
+			:fullscreen #canvas, :-webkit-full-screen #canvas {
+				position: fixed !important;
+				left: 50% !important;
+				top: 50% !important;
+				transform: translate(-50%, -50%) !important;
+				width: min(100vw, 177.7777778vh) !important;
+				height: min(56.25vw, 100vh) !important;
+				max-width: none !important;
+				max-height: none !important;
+			}
+		`;
+		document.head.appendChild(style);
 	}
 
-	const originalCanvasStyle = canvas.getAttribute("style");
-	const originalBodyStyle = document.body.getAttribute("style");
-	const fullscreenElement = () => document.fullscreenElement || document.webkitFullscreenElement;
-	const restoreStyle = (element, style) => {
-		if (style === null) element.removeAttribute("style");
-		else element.setAttribute("style", style);
-	};
-	const fitCanvas = () => {
-		if (!fullscreenElement()) return;
-		const aspectRatio = 16 / 9;
-		let width = window.innerWidth;
-		let height = width / aspectRatio;
-		if (height > window.innerHeight) {
-			height = window.innerHeight;
-			width = height * aspectRatio;
-		}
-		Object.assign(document.body.style, {
-			margin: "0",
-			overflow: "hidden",
-			background: "#000"
-		});
-		Object.assign(canvas.style, {
-			position: "fixed",
-			left: "50%",
-			top: "50%",
-			transform: "translate(-50%, -50%)",
-			width: `${Math.floor(width)}px`,
-			height: `${Math.floor(height)}px`,
-			maxWidth: "none",
-			maxHeight: "none"
-		});
-	};
-	const syncCanvas = () => {
-		if (fullscreenElement()) fitCanvas();
-		else {
-			restoreStyle(canvas, originalCanvasStyle);
-			restoreStyle(document.body, originalBodyStyle);
-		}
-	};
 	const toggle = () => {
 		if (fullscreenElement()) {
 			const exitFullscreen = document.exitFullscreen || document.webkitExitFullscreen;
 			if (exitFullscreen) {
+				setState("exiting");
 				const result = exitFullscreen.call(document);
-				if (result && result.catch) result.catch((error) => console.warn("Framebreak: could not exit fullscreen.", error));
+				if (result && result.catch) {
+					result.catch((error) => {
+						syncState();
+						console.warn("Framebreak: could not exit fullscreen.", error);
+					});
+				}
 			}
 			return;
 		}
@@ -75,21 +68,27 @@ const WEB_FULLSCREEN_HELPER := """
 			return;
 		}
 		try {
+			setState("requesting");
 			const result = requestFullscreen.call(target);
-			if (result && result.catch) result.catch((error) => console.warn("Framebreak: fullscreen request was rejected.", error));
+			if (result && result.catch) {
+				result.catch((error) => {
+					syncState();
+					console.warn("Framebreak: fullscreen request was rejected.", error);
+				});
+			}
 		} catch (error) {
+			syncState();
 			console.warn("Framebreak: fullscreen request failed.", error);
 		}
 	};
 
 	window[helperName] = Object.freeze({
 		toggle,
-		isActive: () => Boolean(fullscreenElement()),
-		fit: fitCanvas
+		isActive: () => Boolean(fullscreenElement())
 	});
-	document.addEventListener("fullscreenchange", syncCanvas);
-	document.addEventListener("webkitfullscreenchange", syncCanvas);
-	window.addEventListener("resize", fitCanvas);
+	document.addEventListener("fullscreenchange", syncState);
+	document.addEventListener("webkitfullscreenchange", syncState);
+	syncState();
 })();
 """
 
@@ -162,9 +161,6 @@ func _is_fullscreen_shortcut(event: InputEventKey) -> bool:
 func _initialize_fullscreen_support() -> void:
 	if not OS.has_feature("web"):
 		return
-	print("Framebreak: initializing Web fullscreen support.")
-	var bridge_probe = JavaScriptBridge.eval("globalThis.FramebreakFullscreenProbe = 'ready'; 42;", true)
-	print("Framebreak: JavaScript bridge probe returned ", bridge_probe)
 	JavaScriptBridge.eval(WEB_FULLSCREEN_HELPER, true)
 
 
