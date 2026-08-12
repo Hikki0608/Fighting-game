@@ -8,6 +8,90 @@ const ROUND_SECONDS := 99
 const ROUNDS_TO_WIN := 2
 const MODE_SOLO: StringName = &"solo"
 const MODE_VERSUS: StringName = &"versus"
+const WEB_FULLSCREEN_HELPER := """
+(() => {
+	const helperName = "FramebreakFullscreen";
+	if (window[helperName]) return;
+
+	const canvas = document.getElementById("canvas");
+	if (!canvas) {
+		console.warn("Framebreak: the game canvas was not found.");
+		return;
+	}
+
+	const originalCanvasStyle = canvas.getAttribute("style");
+	const originalBodyStyle = document.body.getAttribute("style");
+	const fullscreenElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+	const restoreStyle = (element, style) => {
+		if (style === null) element.removeAttribute("style");
+		else element.setAttribute("style", style);
+	};
+	const fitCanvas = () => {
+		if (!fullscreenElement()) return;
+		const aspectRatio = 16 / 9;
+		let width = window.innerWidth;
+		let height = width / aspectRatio;
+		if (height > window.innerHeight) {
+			height = window.innerHeight;
+			width = height * aspectRatio;
+		}
+		Object.assign(document.body.style, {
+			margin: "0",
+			overflow: "hidden",
+			background: "#000"
+		});
+		Object.assign(canvas.style, {
+			position: "fixed",
+			left: "50%",
+			top: "50%",
+			transform: "translate(-50%, -50%)",
+			width: `${Math.floor(width)}px`,
+			height: `${Math.floor(height)}px`,
+			maxWidth: "none",
+			maxHeight: "none"
+		});
+	};
+	const syncCanvas = () => {
+		if (fullscreenElement()) fitCanvas();
+		else {
+			restoreStyle(canvas, originalCanvasStyle);
+			restoreStyle(document.body, originalBodyStyle);
+		}
+	};
+	const toggle = () => {
+		if (fullscreenElement()) {
+			const exitFullscreen = document.exitFullscreen || document.webkitExitFullscreen;
+			if (exitFullscreen) {
+				const result = exitFullscreen.call(document);
+				if (result && result.catch) result.catch((error) => console.warn("Framebreak: could not exit fullscreen.", error));
+			}
+			return;
+		}
+
+		const target = document.documentElement;
+		const requestFullscreen = target.requestFullscreen || target.webkitRequestFullscreen;
+		if (!requestFullscreen) {
+			console.warn("Framebreak: fullscreen is not supported by this browser.");
+			return;
+		}
+		try {
+			const result = requestFullscreen.call(target);
+			if (result && result.catch) result.catch((error) => console.warn("Framebreak: fullscreen request was rejected.", error));
+		} catch (error) {
+			console.warn("Framebreak: fullscreen request failed.", error);
+		}
+	};
+
+	window[helperName] = Object.freeze({
+		toggle,
+		isActive: () => Boolean(fullscreenElement()),
+		fit: fitCanvas
+	});
+	document.addEventListener("fullscreenchange", syncCanvas);
+	document.addEventListener("webkitfullscreenchange", syncCanvas);
+	window.addEventListener("resize", fitCanvas);
+})();
+"""
 
 var fighters: Array[Fighter] = []
 var wins := [0, 0]
@@ -35,6 +119,7 @@ var mode_label: Label
 var menu_layer: CanvasLayer
 var solo_button: Button
 var versus_button: Button
+var fullscreen_button: Button
 var last_drawn_p1_health := -1
 var last_drawn_p2_health := -1
 var last_drawn_timer := -1
@@ -50,8 +135,54 @@ func _ready() -> void:
 	_create_fighters()
 	_create_ui()
 	_create_mode_menu()
+	_initialize_fullscreen_support()
 	_show_mode_menu()
 	_request_hud_redraw()
+
+
+func _input(event: InputEvent) -> void:
+	var key_event := event as InputEventKey
+	if key_event == null or not _is_fullscreen_shortcut(key_event):
+		return
+	# Keep the menu's Enter polling from also starting a match on this frame.
+	meta_key_state[KEY_ENTER] = true
+	_toggle_fullscreen()
+	get_viewport().set_input_as_handled()
+
+
+func _is_fullscreen_shortcut(event: InputEventKey) -> bool:
+	return (
+		event.pressed
+		and not event.echo
+		and event.alt_pressed
+		and (event.keycode == KEY_ENTER or event.physical_keycode == KEY_ENTER)
+	)
+
+
+func _initialize_fullscreen_support() -> void:
+	if not OS.has_feature("web"):
+		return
+	var bridge := Engine.get_singleton("JavaScriptBridge")
+	if bridge != null:
+		bridge.call("eval", WEB_FULLSCREEN_HELPER, true)
+
+
+func _toggle_fullscreen() -> void:
+	if OS.has_feature("web"):
+		var bridge := Engine.get_singleton("JavaScriptBridge")
+		if bridge != null:
+			bridge.call("eval", "window.FramebreakFullscreen && window.FramebreakFullscreen.toggle();", true)
+		return
+
+	var mode := DisplayServer.window_get_mode()
+	var is_fullscreen := (
+		mode == DisplayServer.WINDOW_MODE_FULLSCREEN
+		or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+	)
+	if is_fullscreen:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+	else:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 
 
 func _create_arena_background() -> void:
@@ -157,30 +288,46 @@ func _create_mode_menu() -> void:
 	subtitle.add_theme_color_override("font_color", Color("91ddea"))
 	menu_layer.add_child(subtitle)
 
-	solo_button = _make_mode_button("1 PLAYER   •   VS CPU", Vector2(326.0, 260.0))
-	versus_button = _make_mode_button("2 PLAYERS   •   LOCAL VERSUS", Vector2(326.0, 350.0))
+	solo_button = _make_mode_button("1 PLAYER   •   VS CPU", Vector2(326.0, 250.0))
+	versus_button = _make_mode_button("2 PLAYERS   •   LOCAL VERSUS", Vector2(326.0, 335.0))
+	fullscreen_button = _make_mode_button(
+		"FULLSCREEN   •   ALT + ENTER",
+		Vector2(426.0, 430.0),
+		Vector2(300.0, 52.0),
+		18,
+		false
+	)
 	solo_button.pressed.connect(_start_solo_mode)
 	versus_button.pressed.connect(_start_versus_mode)
+	fullscreen_button.pressed.connect(_toggle_fullscreen)
+	fullscreen_button.tooltip_text = "Toggle fullscreen (Alt + Enter)"
 	menu_layer.add_child(solo_button)
 	menu_layer.add_child(versus_button)
+	menu_layer.add_child(fullscreen_button)
 
 	var hint := Label.new()
-	hint.position = Vector2(226.0, 475.0)
+	hint.position = Vector2(226.0, 510.0)
 	hint.size = Vector2(700.0, 70.0)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.text = "UP / DOWN OR W / S TO CHOOSE    •    ENTER TO START\nPRESS M DURING A MATCH TO RETURN HERE"
+	hint.text = "UP / DOWN OR W / S TO CHOOSE    •    ENTER TO START\nM: MODE SELECT    •    ALT + ENTER: FULLSCREEN"
 	hint.add_theme_font_size_override("font_size", 16)
 	hint.add_theme_color_override("font_color", Color("91acb7"))
 	menu_layer.add_child(hint)
 
 
-func _make_mode_button(button_text: String, button_position: Vector2) -> Button:
+func _make_mode_button(
+	button_text: String,
+	button_position: Vector2,
+	button_size: Vector2 = Vector2(500.0, 68.0),
+	font_size: int = 22,
+	focusable: bool = true
+) -> Button:
 	var button := Button.new()
 	button.position = button_position
-	button.size = Vector2(500.0, 68.0)
+	button.size = button_size
 	button.text = button_text
-	button.focus_mode = Control.FOCUS_ALL
-	button.add_theme_font_size_override("font_size", 22)
+	button.focus_mode = Control.FOCUS_ALL if focusable else Control.FOCUS_NONE
+	button.add_theme_font_size_override("font_size", font_size)
 	button.add_theme_color_override("font_color", Color("d8f7ff"))
 	button.add_theme_color_override("font_hover_color", Color("fff3c4"))
 	button.add_theme_color_override("font_focus_color", Color("fff3c4"))
@@ -507,10 +654,10 @@ func _update_ui() -> void:
 	_set_label_text_if_changed(subtitle_label, announcement_sub)
 	if game_mode == MODE_SOLO:
 		_set_label_text_if_changed(mode_label, "1 PLAYER  •  CPU STANDARD")
-		_set_label_text_if_changed(help_label, "P1 A/D move  W/S jump/crouch  F/G attack  H special  R throw  •  Air F/G  •  Back+R back throw  •  M menu")
+		_set_label_text_if_changed(help_label, "P1 A/D move  W/S jump/crouch  F/G attack  H special  R throw  •  Air F/G  •  Back+R back throw  •  M menu  •  Alt+Enter fullscreen")
 	else:
 		_set_label_text_if_changed(mode_label, "2 PLAYERS  •  LOCAL VERSUS")
-		_set_label_text_if_changed(help_label, "P1 A/D W/S F/G/H/R  •  P2 Arrows J/K/L/I  •  Air: light/heavy  •  Back+throw  •  M menu")
+		_set_label_text_if_changed(help_label, "P1 A/D W/S F/G/H/R  •  P2 Arrows J/K/L/I  •  Air: light/heavy  •  Back+throw  •  M menu  •  Alt+Enter fullscreen")
 	if training_visible:
 		var training_text := "FRAME DATA / HITBOX VIEW\nP1  %s\nP2  %s\nDistance: %.1f px    Enter: reset round" % [
 			fighters[0].frame_data_text(),
