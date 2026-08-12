@@ -162,6 +162,9 @@ func _is_fullscreen_shortcut(event: InputEventKey) -> bool:
 func _initialize_fullscreen_support() -> void:
 	if not OS.has_feature("web"):
 		return
+	print("Framebreak: initializing Web fullscreen support.")
+	var bridge_probe = JavaScriptBridge.eval("globalThis.FramebreakFullscreenProbe = 'ready'; 42;", true)
+	print("Framebreak: JavaScript bridge probe returned ", bridge_probe)
 	JavaScriptBridge.eval(WEB_FULLSCREEN_HELPER, true)
 
 
