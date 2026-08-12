@@ -162,16 +162,12 @@ func _is_fullscreen_shortcut(event: InputEventKey) -> bool:
 func _initialize_fullscreen_support() -> void:
 	if not OS.has_feature("web"):
 		return
-	var bridge := Engine.get_singleton("JavaScriptBridge")
-	if bridge != null:
-		bridge.call("eval", WEB_FULLSCREEN_HELPER, true)
+	JavaScriptBridge.eval(WEB_FULLSCREEN_HELPER, true)
 
 
 func _toggle_fullscreen() -> void:
 	if OS.has_feature("web"):
-		var bridge := Engine.get_singleton("JavaScriptBridge")
-		if bridge != null:
-			bridge.call("eval", "window.FramebreakFullscreen && window.FramebreakFullscreen.toggle();", true)
+		JavaScriptBridge.eval("window.FramebreakFullscreen && window.FramebreakFullscreen.toggle();", true)
 		return
 
 	var mode := DisplayServer.window_get_mode()
