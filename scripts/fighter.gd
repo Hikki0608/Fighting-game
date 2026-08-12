@@ -74,12 +74,25 @@ var previous_buttons := {
 	"special": false,
 	"throw": false
 }
+var sampled_buttons := {
+	"light": false,
+	"heavy": false,
+	"special": false,
+	"throw": false
+}
 var input_history: Array[Vector2] = []
 var debug_boxes := false
 var combo_received := 0
 var last_hit_result := ""
 var throw_backwards := false
 var air_attack_used := false
+var last_visual_state: StringName = &""
+var last_visual_frame := -1
+var last_visual_facing := 0
+var last_visual_height := -1
+var last_visual_back_throw := false
+var last_visual_debug := false
+var last_visual_attack_active := false
 
 
 func setup(id: int, display_name: String, color: Color, spawn_position: Vector2) -> void:
@@ -115,17 +128,14 @@ func reset_for_round(spawn_position: Vector2) -> void:
 		"pressed": previous_buttons.duplicate()
 	}
 	input_history.clear()
-	queue_redraw()
+	_invalidate_visual_cache()
+	_queue_visual_redraw_if_needed()
 
 
 func capture_input() -> void:
 	var axis := Vector2.ZERO
-	var buttons := {
-		"light": false,
-		"heavy": false,
-		"special": false,
-		"throw": false
-	}
+	var buttons := sampled_buttons
+	_reset_sampled_buttons()
 
 	if player_id == 0:
 		axis.x = float(Input.is_physical_key_pressed(KEY_D)) - float(Input.is_physical_key_pressed(KEY_A))
@@ -156,12 +166,11 @@ func capture_input() -> void:
 
 
 func apply_virtual_input(axis: Vector2, requested_buttons: Dictionary = {}) -> void:
-	var buttons := {
-		"light": bool(requested_buttons.get("light", false)),
-		"heavy": bool(requested_buttons.get("heavy", false)),
-		"special": bool(requested_buttons.get("special", false)),
-		"throw": bool(requested_buttons.get("throw", false))
-	}
+	var buttons := sampled_buttons
+	buttons.light = bool(requested_buttons.get("light", false))
+	buttons.heavy = bool(requested_buttons.get("heavy", false))
+	buttons.special = bool(requested_buttons.get("special", false))
+	buttons.throw = bool(requested_buttons.get("throw", false))
 	_commit_input(axis, buttons)
 
 
@@ -175,15 +184,22 @@ func _commit_input(raw_axis: Vector2, buttons: Dictionary) -> void:
 	axis.x = 0.0 if absf(axis.x) < 0.28 else signf(axis.x)
 	axis.y = 0.0 if absf(axis.y) < 0.28 else signf(axis.y)
 
-	var pressed := {}
+	var pressed: Dictionary = intent.pressed
+	var committed_buttons: Dictionary = intent.buttons
 	for button_name in buttons:
 		pressed[button_name] = buttons[button_name] and not previous_buttons.get(button_name, false)
-	previous_buttons = buttons.duplicate()
-	intent = {"axis": axis, "buttons": buttons, "pressed": pressed}
+		previous_buttons[button_name] = buttons[button_name]
+		committed_buttons[button_name] = buttons[button_name]
+	intent.axis = axis
 
 	input_history.push_front(Vector2(axis.x * facing, axis.y))
 	if input_history.size() > 18:
 		input_history.pop_back()
+
+
+func _reset_sampled_buttons() -> void:
+	for button_name in sampled_buttons:
+		sampled_buttons[button_name] = false
 
 
 func simulate(opponent: Fighter, accepting_input: bool) -> void:
@@ -201,7 +217,7 @@ func simulate(opponent: Fighter, accepting_input: bool) -> void:
 	_apply_physics()
 	if is_on_ground() and _can_turn():
 		facing = 1 if opponent.position.x >= position.x else -1
-	queue_redraw()
+	_queue_visual_redraw_if_needed()
 
 
 func _step_neutral(opponent: Fighter) -> void:
@@ -380,7 +396,7 @@ func receive_attack(data: Dictionary, attacker_x: float, forced_push_direction :
 		if state == &"knockdown":
 			velocity.y = float(data.get("launch_y", -330.0))
 
-	queue_redraw()
+	_queue_visual_redraw_if_needed()
 	return {
 		"blocked": blocked,
 		"damage": damage,
@@ -398,6 +414,42 @@ func mark_attack_connected() -> void:
 
 func set_debug_boxes(enabled: bool) -> void:
 	debug_boxes = enabled
+	_queue_visual_redraw_if_needed()
+
+
+func _invalidate_visual_cache() -> void:
+	last_visual_state = &""
+	last_visual_frame = -1
+	last_visual_facing = 0
+	last_visual_height = -1
+	last_visual_back_throw = not throw_backwards
+	last_visual_debug = not debug_boxes
+	last_visual_attack_active = false
+
+
+func _queue_visual_redraw_if_needed() -> void:
+	var animated_frame := state_frame if ATTACKS.has(state) else 0
+	var height_step := roundi(position.y) if not is_on_ground() else roundi(GROUND_Y)
+	var attack_active := debug_boxes and is_attack_active()
+	var visual_changed := (
+		last_visual_state != state
+		or last_visual_frame != animated_frame
+		or last_visual_facing != facing
+		or last_visual_height != height_step
+		or last_visual_back_throw != throw_backwards
+		or last_visual_debug != debug_boxes
+		or last_visual_attack_active != attack_active
+	)
+	if not visual_changed:
+		return
+
+	last_visual_state = state
+	last_visual_frame = animated_frame
+	last_visual_facing = facing
+	last_visual_height = height_step
+	last_visual_back_throw = throw_backwards
+	last_visual_debug = debug_boxes
+	last_visual_attack_active = attack_active
 	queue_redraw()
 
 
