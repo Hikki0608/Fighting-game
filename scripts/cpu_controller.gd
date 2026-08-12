@@ -44,6 +44,12 @@ func build_intent(cpu: Fighter, opponent: Fighter) -> Dictionary:
 	var toward := 1.0 if delta_x >= 0.0 else -1.0
 	var away := -toward
 
+	if cpu.state == &"vel_shadow":
+		if cpu.state_frame >= 10 and cpu.state_frame <= 20 and attack_cooldown <= 0 and rng.randf() < 0.24:
+			buttons.heavy = true
+			attack_cooldown = 30
+		return _intent(Vector2.ZERO, buttons)
+
 	if _cannot_choose_action(cpu):
 		move_axis = 0.0
 		return _intent(Vector2.ZERO, buttons)
@@ -51,12 +57,20 @@ func build_intent(cpu: Fighter, opponent: Fighter) -> Dictionary:
 	if not cpu.is_on_ground():
 		move_axis = toward
 		if attack_cooldown <= 0 and distance < MID_RANGE and rng.randf() < 0.075:
-			if rng.randf() < 0.62:
+			var air_roll := rng.randf()
+			if air_roll < 0.34:
+				buttons.special = true
+			elif air_roll < 0.72:
 				buttons.light = true
 			else:
 				buttons.heavy = true
 			attack_cooldown = 22
 		return _intent(Vector2(move_axis, 0.0), buttons)
+
+	if not opponent.is_on_ground() and distance < MID_RANGE and attack_cooldown <= 0 and rng.randf() < 0.34:
+		buttons.special = true
+		attack_cooldown = rng.randi_range(28, 42)
+		return _intent(Vector2(0.0, 1.0), buttons)
 
 	if _opponent_is_threatening(opponent, distance):
 		if opponent.state == &"throw" and rng.randf() < 0.42:
@@ -83,19 +97,33 @@ func build_intent(cpu: Fighter, opponent: Fighter) -> Dictionary:
 	var roll := rng.randf()
 	move_axis = 0.0
 
+	if cpu.meter >= Fighter.MAX_METER and distance < MID_RANGE and roll < 0.18:
+		buttons.light = true
+		buttons.heavy = true
+		attack_cooldown = 52
+		return _intent(Vector2.ZERO, buttons)
+
 	if distance > FAR_RANGE:
+		if cpu.character_id == &"ren" and roll < 0.34:
+			buttons.special = true
+			attack_cooldown = rng.randi_range(30, 44)
+			return _intent(Vector2.ZERO, buttons)
 		move_axis = toward
 		decision_frames = rng.randi_range(18, 32)
-		if roll < 0.14:
+		if roll < 0.12:
 			return _intent(Vector2(toward, -1.0), buttons)
 		return _intent(Vector2(toward, 0.0), buttons)
 
 	if distance > MID_RANGE:
-		if roll < 0.66:
+		if cpu.character_id == &"ren" and roll < 0.26:
+			buttons.special = true
+			attack_cooldown = rng.randi_range(28, 42)
+		elif roll < 0.62:
 			move_axis = toward
 			decision_frames = rng.randi_range(10, 22)
-		elif roll < 0.80:
+		elif roll < 0.84:
 			buttons.special = true
+			move_axis = toward
 			attack_cooldown = rng.randi_range(25, 40)
 		else:
 			move_axis = away
@@ -103,12 +131,16 @@ func build_intent(cpu: Fighter, opponent: Fighter) -> Dictionary:
 		return _intent(Vector2(move_axis, 0.0), buttons)
 
 	if distance > CLOSE_RANGE:
-		if roll < 0.34:
+		if roll < 0.28:
 			buttons.light = true
-		elif roll < 0.58:
+		elif roll < 0.52:
 			buttons.heavy = true
+			if rng.randf() < 0.34:
+				move_axis = toward
 		elif roll < 0.76:
 			buttons.special = true
+			if cpu.character_id == &"ren" or rng.randf() < 0.70:
+				move_axis = toward
 		elif roll < 0.88:
 			move_axis = toward
 			decision_frames = rng.randi_range(5, 10)
@@ -116,16 +148,22 @@ func build_intent(cpu: Fighter, opponent: Fighter) -> Dictionary:
 			move_axis = away
 			guard_frames = rng.randi_range(8, 15)
 	else:
-		if roll < 0.24:
+		if roll < 0.20:
 			buttons.throw = true
 			if rng.randf() < 0.32:
 				move_axis = away
-		elif roll < 0.55:
+		elif roll < 0.47:
 			buttons.light = true
-		elif roll < 0.76:
+		elif roll < 0.68:
 			buttons.heavy = true
-		elif roll < 0.88:
+			if rng.randf() < 0.38:
+				move_axis = toward
+		elif roll < 0.90:
 			buttons.special = true
+			if cpu.character_id == &"vel" and rng.randf() < 0.22:
+				move_axis = away
+			elif rng.randf() < 0.46:
+				move_axis = toward
 		else:
 			move_axis = away
 			guard_frames = rng.randi_range(9, 18)
@@ -136,13 +174,21 @@ func build_intent(cpu: Fighter, opponent: Fighter) -> Dictionary:
 
 
 func _cannot_choose_action(cpu: Fighter) -> bool:
-	return cpu.state == &"hitstun" or cpu.state == &"blockstun" or cpu.state == &"knockdown" or Fighter.ATTACKS.has(cpu.state)
+	return (
+		cpu.state == &"hitstun"
+		or cpu.state == &"blockstun"
+		or cpu.state == &"knockdown"
+		or cpu.state == &"vel_shadow"
+		or cpu.is_attacking()
+	)
 
 
 func _opponent_is_threatening(opponent: Fighter, distance: float) -> bool:
-	if not Fighter.ATTACKS.has(opponent.state):
+	if not opponent.is_attacking():
 		return false
-	var attack: Dictionary = Fighter.ATTACKS[opponent.state]
+	var attack := opponent.current_attack()
+	if bool(attack.get("projectile", false)):
+		return false
 	var warning_frame := maxi(1, int(attack.startup) - 3)
 	return opponent.state_frame >= warning_frame and distance <= float(attack.range) + 62.0
 

@@ -14,14 +14,14 @@ const CHARACTER_ROSTER := [
 	{
 		"id": &"ren",
 		"name": "REN",
-		"title": "STYLE: TBD",
+		"title": "AZURE TACTICIAN",
 		"color": Color("2cccf4"),
 		"texture": RenFighterTexture
 	},
 	{
 		"id": &"vel",
 		"name": "VEL",
-		"title": "STYLE: TBD",
+		"title": "CRIMSON HUNTER",
 		"color": Color("ff4f86"),
 		"texture": VelFighterTexture
 	}
@@ -120,6 +120,7 @@ var global_hitstop := 0
 var training_visible := false
 var screen_shake := 0.0
 var hit_sparks: Array[Dictionary] = []
+var projectiles: Array[Dictionary] = []
 var announcement := "ROUND 1"
 var announcement_sub := ""
 var combat_callout_frames := 0
@@ -150,6 +151,9 @@ var last_drawn_timer := -1
 var last_drawn_p1_wins := -1
 var last_drawn_p2_wins := -1
 var last_drawn_spark_count := -1
+var last_drawn_p1_meter := -1
+var last_drawn_p2_meter := -1
+var last_drawn_projectile_count := -1
 
 
 func _ready() -> void:
@@ -648,6 +652,8 @@ func _physics_process(_delta: float) -> void:
 		return
 
 	if phase == &"intro":
+		for fighter in fighters:
+			fighter.clear_action_buffer()
 		phase_frames -= 1
 		if phase_frames == 60:
 			announcement = "FIGHT"
@@ -659,8 +665,11 @@ func _physics_process(_delta: float) -> void:
 		round_frames = maxi(0, round_frames - 1)
 		for i in fighters.size():
 			fighters[i].simulate(fighters[1 - i], true)
+		_spawn_pending_projectiles()
+		_update_projectiles()
 		_resolve_body_collision()
 		_resolve_attacks()
+		_resolve_projectiles()
 		if fighters[0].health <= 0 or fighters[1].health <= 0 or round_frames <= 0:
 			_finish_round()
 	elif phase == &"round_over":
@@ -704,6 +713,8 @@ func _handle_system_input() -> void:
 		if phase == &"match_over":
 			wins = [0, 0]
 			round_number = 1
+			for fighter in fighters:
+				fighter.reset_match_resources()
 			_start_round()
 		elif training_visible:
 			_start_round()
@@ -740,6 +751,7 @@ func _show_mode_menu() -> void:
 	screen_shake = 0.0
 	global_hitstop = 0
 	hit_sparks.clear()
+	projectiles.clear()
 	training_visible = false
 	training_label.visible = false
 	announcement_label.visible = false
@@ -789,6 +801,7 @@ func _start_match(selected_mode: StringName) -> void:
 			character_data["color"],
 			character_data["texture"] as Texture2D
 		)
+		fighters[index].reset_match_resources()
 	wins = [0, 0]
 	round_number = 1
 	training_visible = false
@@ -804,6 +817,7 @@ func _start_round() -> void:
 	round_frames = ROUND_SECONDS * 60
 	global_hitstop = 0
 	hit_sparks.clear()
+	projectiles.clear()
 	combat_callout_frames = 0
 	cpu_controller.reset()
 	fighters[0].facing = 1
@@ -817,6 +831,7 @@ func _start_round() -> void:
 func _finish_round() -> void:
 	if phase != &"fight":
 		return
+	projectiles.clear()
 	var winner := -1
 	if fighters[0].health > fighters[1].health:
 		winner = 0
@@ -868,33 +883,106 @@ func _resolve_attacks() -> void:
 		var defender := fighters[1 - attacker_index]
 		if not attacker.is_attack_active():
 			continue
-		if not attacker.attack_rect().intersects(defender.hurt_rect()):
+		if defender.is_invulnerable():
 			continue
-		if attacker.state == &"throw" and (not defender.is_on_ground() or defender.state == &"hitstun" or defender.state == &"blockstun"):
+		if not attacker.attack_rect().intersects(defender.hurt_rect()):
 			continue
 
 		var attack_data := attacker.current_attack()
+		if bool(attack_data.get("grab", false)) and not defender.can_be_grabbed():
+			continue
 		attacker.mark_attack_connected()
 		var forced_push_direction := 0.0
 		if bool(attack_data.get("back_throw", false)):
 			forced_push_direction = _perform_back_throw(attacker, defender)
-		var result := defender.receive_attack(attack_data, attacker.position.x, forced_push_direction)
-		global_hitstop = result.hitstop
-		screen_shake = 8.0 if not result.blocked else 3.0
-		hit_sparks.append({
-			"position": defender.hurt_rect().get_center(),
-			"frames": 12,
-			"blocked": result.blocked
-		})
-		if result.back_throw:
-			announcement_sub = "BACK THROW"
-			combat_callout_frames = 60
-		elif result.combo > 1 and not result.blocked:
-			announcement_sub = "%d HIT COMBO" % result.combo
-			combat_callout_frames = 45
-		if result.ko:
-			_finish_round()
+		_apply_attack_hit(
+			attacker,
+			defender,
+			attack_data,
+			attacker.position.x,
+			forced_push_direction,
+			defender.hurt_rect().get_center()
+		)
 		break
+
+
+func _spawn_pending_projectiles() -> void:
+	for fighter in fighters:
+		var projectile_data := fighter.take_projectile_request()
+		if not projectile_data.is_empty():
+			projectiles.append(projectile_data)
+
+
+func _update_projectiles() -> void:
+	for index in range(projectiles.size() - 1, -1, -1):
+		var projectile: Dictionary = projectiles[index]
+		projectile.frames = int(projectile.frames) - 1
+		projectile.position += projectile.velocity / 60.0
+		if (
+			int(projectile.frames) <= 0
+			or projectile.position.x < Fighter.ARENA_LEFT - 50.0
+			or projectile.position.x > Fighter.ARENA_RIGHT + 50.0
+		):
+			projectiles.remove_at(index)
+
+
+func _resolve_projectiles() -> void:
+	for index in range(projectiles.size() - 1, -1, -1):
+		var projectile: Dictionary = projectiles[index]
+		var owner_id := int(projectile.owner_id)
+		var owner := fighters[owner_id]
+		var defender := fighters[1 - owner_id]
+		if defender.is_invulnerable():
+			continue
+		var radius := float(projectile.radius)
+		var projectile_rect := Rect2(projectile.position - Vector2.ONE * radius, Vector2.ONE * radius * 2.0)
+		if not projectile_rect.intersects(defender.hurt_rect()):
+			continue
+		var attack_data: Dictionary = projectile.attack
+		projectiles.remove_at(index)
+		_apply_attack_hit(
+			owner,
+			defender,
+			attack_data,
+			float(projectile.position.x),
+			0.0,
+			projectile.position
+		)
+		if phase != &"fight":
+			return
+
+
+func _apply_attack_hit(
+	attacker: Fighter,
+	defender: Fighter,
+	attack_data: Dictionary,
+	attacker_x: float,
+	forced_push_direction: float,
+	spark_position: Vector2
+) -> void:
+	var result := defender.receive_attack(attack_data, attacker_x, forced_push_direction)
+	var meter_gain := int(attack_data.get("meter_block", 0)) if result.blocked else int(attack_data.get("meter_hit", 0))
+	attacker.gain_meter(meter_gain)
+	defender.gain_meter(3 if result.blocked else 6)
+	global_hitstop = result.hitstop
+	screen_shake = 9.0 if bool(attack_data.get("super", false)) else (8.0 if not result.blocked else 3.0)
+	hit_sparks.append({
+		"position": spark_position,
+		"frames": 16 if bool(attack_data.get("super", false)) else 12,
+		"blocked": result.blocked,
+		"color": attacker.body_color.lightened(0.35)
+	})
+	if result.back_throw:
+		announcement_sub = "BACK THROW"
+		combat_callout_frames = 60
+	elif result.combo > 1 and not result.blocked:
+		announcement_sub = "%d HIT COMBO" % result.combo
+		combat_callout_frames = 45
+	elif bool(attack_data.get("super", false)):
+		announcement_sub = str(attack_data.get("label", "SUPER"))
+		combat_callout_frames = 60
+	if result.ko:
+		_finish_round()
 
 
 func _perform_back_throw(attacker: Fighter, defender: Fighter) -> float:
@@ -969,12 +1057,15 @@ func _invalidate_hud_cache() -> void:
 	last_drawn_p1_wins = -1
 	last_drawn_p2_wins = -1
 	last_drawn_spark_count = -1
+	last_drawn_p1_meter = -1
+	last_drawn_p2_meter = -1
+	last_drawn_projectile_count = -1
 	queue_redraw()
 
 
 func _request_hud_redraw() -> void:
 	var timer_seconds := ceili(float(round_frames) / 60.0)
-	var sparks_need_animation := not hit_sparks.is_empty()
+	var effects_need_animation := not hit_sparks.is_empty() or not projectiles.is_empty()
 	var hud_changed: bool = (
 		last_drawn_p1_health != fighters[0].health
 		or last_drawn_p2_health != fighters[1].health
@@ -982,8 +1073,11 @@ func _request_hud_redraw() -> void:
 		or last_drawn_p1_wins != wins[0]
 		or last_drawn_p2_wins != wins[1]
 		or last_drawn_spark_count != hit_sparks.size()
+		or last_drawn_p1_meter != fighters[0].meter
+		or last_drawn_p2_meter != fighters[1].meter
+		or last_drawn_projectile_count != projectiles.size()
 	)
-	if not hud_changed and not sparks_need_animation:
+	if not hud_changed and not effects_need_animation:
 		return
 
 	last_drawn_p1_health = fighters[0].health
@@ -992,6 +1086,9 @@ func _request_hud_redraw() -> void:
 	last_drawn_p1_wins = wins[0]
 	last_drawn_p2_wins = wins[1]
 	last_drawn_spark_count = hit_sparks.size()
+	last_drawn_p1_meter = fighters[0].meter
+	last_drawn_p2_meter = fighters[1].meter
+	last_drawn_projectile_count = projectiles.size()
 	queue_redraw()
 
 
@@ -1013,18 +1110,52 @@ func _draw() -> void:
 	draw_rect(Rect2(48, 40, 450, 34), p1_accent, false, 2.0)
 	draw_rect(Rect2(654, 40, 450, 34), p2_accent, false, 2.0)
 
+	# Super meters fill toward the center of the screen.
+	draw_rect(Rect2(48, 80, 450, 10), Color("101820"), true)
+	draw_rect(Rect2(654, 80, 450, 10), Color("101820"), true)
+	var p1_meter_width := 446.0 * float(fighters[0].meter) / float(Fighter.MAX_METER)
+	var p2_meter_width := 446.0 * float(fighters[1].meter) / float(Fighter.MAX_METER)
+	var p1_meter_color := Color("ffd45e") if fighters[0].meter >= Fighter.MAX_METER else p1_color.lightened(0.2)
+	var p2_meter_color := Color("ffd45e") if fighters[1].meter >= Fighter.MAX_METER else p2_color.lightened(0.2)
+	draw_rect(Rect2(50, 82, p1_meter_width, 6), p1_meter_color, true)
+	draw_rect(Rect2(1102.0 - p2_meter_width, 82, p2_meter_width, 6), p2_meter_color, true)
+	draw_rect(Rect2(48, 80, 450, 10), p1_accent, false, 1.0)
+	draw_rect(Rect2(654, 80, 450, 10), p2_accent, false, 1.0)
+
 	var font := ThemeDB.fallback_font
-	draw_string(font, Vector2(50, 99), fighters[0].fighter_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 19, p1_accent)
-	draw_string(font, Vector2(654, 99), fighters[1].fighter_name, HORIZONTAL_ALIGNMENT_RIGHT, 448, 19, p2_accent)
+	if fighters[0].meter >= Fighter.MAX_METER:
+		draw_string(font, Vector2(50, 89), "SUPER READY", HORIZONTAL_ALIGNMENT_RIGHT, 446, 9, Color("2a210b"))
+	if fighters[1].meter >= Fighter.MAX_METER:
+		draw_string(font, Vector2(656, 89), "SUPER READY", HORIZONTAL_ALIGNMENT_LEFT, 446, 9, Color("2a210b"))
+	draw_string(font, Vector2(50, 111), fighters[0].fighter_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 19, p1_accent)
+	draw_string(font, Vector2(654, 111), fighters[1].fighter_name, HORIZONTAL_ALIGNMENT_RIGHT, 448, 19, p2_accent)
 	var timer_text := "%02d" % ceili(float(round_frames) / 60.0)
 	draw_string(font, Vector2(516, 76), timer_text, HORIZONTAL_ALIGNMENT_CENTER, 120, 36, Color("fff3c4"))
 	for i in wins[0]:
-		draw_circle(Vector2(68.0 + i * 24.0, 116.0), 8.0, Color("fff3c4"))
+		draw_circle(Vector2(68.0 + i * 24.0, 126.0), 8.0, Color("fff3c4"))
 	for i in wins[1]:
-		draw_circle(Vector2(1084.0 - i * 24.0, 116.0), 8.0, Color("fff3c4"))
+		draw_circle(Vector2(1084.0 - i * 24.0, 126.0), 8.0, Color("fff3c4"))
+
+	for projectile in projectiles:
+		var projectile_color: Color = projectile.color
+		var projectile_position: Vector2 = projectile.position
+		var projectile_radius := float(projectile.radius)
+		draw_circle(projectile_position, projectile_radius + 9.0, Color(projectile_color, 0.12))
+		draw_circle(projectile_position, projectile_radius, Color(projectile_color.lightened(0.38), 0.88))
+		draw_arc(projectile_position, projectile_radius + 4.0, 0.0, TAU, 22, Color("d9fbff"), 3.0, true)
+		for trail in 3:
+			var trail_length := 22.0 + trail * 12.0
+			var trail_direction := -signf(float(projectile.velocity.x))
+			draw_line(
+				projectile_position + Vector2(trail_direction * 12.0, (trail - 1) * 7.0),
+				projectile_position + Vector2(trail_direction * trail_length, (trail - 1) * 7.0),
+				Color(projectile_color, 0.55 - trail * 0.12),
+				4.0 - trail * 0.6,
+				true
+			)
 
 	for spark in hit_sparks:
-		var spark_color := Color("8defff") if spark.blocked else Color("fff19a")
+		var spark_color := Color("8defff") if spark.blocked else Color(spark.get("color", Color("fff19a")))
 		var radius := float(spark.frames) * 2.5
 		for ray in 8:
 			var angle := TAU * float(ray) / 8.0
