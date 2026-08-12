@@ -10,6 +10,7 @@ const JUMP_SPEED := -850.0
 const BODY_WIDTH := 58.0
 const BODY_HEIGHT := 126.0
 const CROUCH_HEIGHT := 82.0
+const VISUAL_SIZE := 176.0
 
 const ATTACKS := {
 	&"light": {
@@ -54,9 +55,11 @@ const ATTACKS := {
 }
 
 var player_id := 0
+var character_id: StringName = &"ren"
 var fighter_name := "PLAYER 1"
 var body_color := Color("4ed8ff")
 var accent_color := Color("e9fbff")
+var character_texture: Texture2D
 var health := 1000
 var facing := 1
 var velocity := Vector2.ZERO
@@ -95,14 +98,34 @@ var last_visual_debug := false
 var last_visual_attack_active := false
 
 
-func setup(id: int, display_name: String, color: Color, spawn_position: Vector2) -> void:
+func setup(
+	id: int,
+	display_name: String,
+	color: Color,
+	spawn_position: Vector2,
+	texture: Texture2D = null
+) -> void:
 	player_id = id
-	fighter_name = display_name
-	body_color = color
-	accent_color = color.lightened(0.55)
+	configure_character(StringName(display_name.to_lower()), display_name, color, texture)
 	position = spawn_position
 	facing = 1 if player_id == 0 else -1
 	reset_for_round(spawn_position)
+
+
+func configure_character(
+	selected_character_id: StringName,
+	display_name: String,
+	color: Color,
+	texture: Texture2D
+) -> void:
+	character_id = selected_character_id
+	fighter_name = display_name
+	body_color = color
+	accent_color = color.lightened(0.55)
+	character_texture = texture
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	_invalidate_visual_cache()
+	queue_redraw()
 
 
 func reset_for_round(spawn_position: Vector2) -> void:
@@ -503,45 +526,67 @@ func _draw() -> void:
 	draw_circle(Vector2.ZERO, 30.0, Color(0.0, 0.0, 0.0, 0.28))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-	var crouch_offset := 30.0 if state == &"crouch" else 0.0
-	var lean := 13.0 * facing if state == &"special" else 0.0
-	if state == &"throw" and throw_backwards:
-		lean = -9.0 * facing
-	var body_rect := Rect2(-25.0 + lean, -98.0 + crouch_offset, 50.0, 80.0 - crouch_offset)
-	if state == &"knockdown":
-		body_rect = Rect2(-55.0, -30.0, 110.0, 28.0)
-	draw_rect(body_rect, body_color, true)
-	draw_rect(body_rect, accent_color, false, 3.0)
+	var visual_offset := Vector2.ZERO
+	var visual_rotation := 0.0
+	var visual_scale := Vector2(float(facing), 1.0)
+	var visual_modulate := Color.WHITE
+	match state:
+		&"crouch":
+			visual_scale.y = 0.76
+		&"jump":
+			visual_rotation = -0.035 * facing
+		&"light":
+			visual_offset.x = 5.0 * facing
+			visual_rotation = -0.025 * facing
+		&"heavy":
+			visual_offset.x = 9.0 * facing
+			visual_rotation = -0.07 * facing
+		&"special":
+			visual_offset.x = 13.0 * facing
+			visual_rotation = -0.09 * facing
+		&"throw":
+			visual_offset.x = (-7.0 if throw_backwards else 8.0) * facing
+			visual_rotation = (0.06 if throw_backwards else -0.05) * facing
+		&"jump_light":
+			visual_offset.x = 6.0 * facing
+			visual_rotation = -0.11 * facing
+		&"jump_heavy":
+			visual_offset.x = 8.0 * facing
+			visual_rotation = 0.13 * facing
+		&"hitstun":
+			visual_offset.x = -7.0 * facing
+			visual_rotation = 0.1 * facing
+			visual_modulate = Color(1.0, 0.62, 0.62, 1.0)
+		&"blockstun":
+			visual_offset.x = -5.0 * facing
+			visual_rotation = 0.055 * facing
+			visual_modulate = Color(0.76, 0.95, 1.0, 1.0)
+		&"knockdown":
+			visual_offset = Vector2(-42.0 * facing, -8.0)
+			visual_rotation = -1.25 * facing
+			visual_scale *= 0.86
 
-	if state != &"knockdown":
-		draw_circle(Vector2(lean, -116.0 + crouch_offset), 22.0, body_color.lightened(0.18))
-		draw_arc(Vector2(lean, -116.0 + crouch_offset), 22.0, 0.0, TAU, 24, accent_color, 3.0)
-		draw_circle(Vector2(lean + facing * 8.0, -120.0 + crouch_offset), 3.2, Color("10202d"))
+	draw_set_transform(visual_offset, visual_rotation, visual_scale)
+	if character_texture != null:
+		draw_texture_rect(
+			character_texture,
+			Rect2(-VISUAL_SIZE * 0.5, -VISUAL_SIZE, VISUAL_SIZE, VISUAL_SIZE),
+			false,
+			visual_modulate
+		)
+	else:
+		_draw_fallback_fighter()
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-		var front_hand := Vector2(facing * 32.0 + lean, -77.0 + crouch_offset)
-		if state == &"jump_light":
-			var jab_extension := clampf(float(state_frame) / 6.0, 0.0, 1.0)
-			front_hand = Vector2(facing * (34.0 + 50.0 * jab_extension), -88.0)
-		elif ATTACKS.has(state) and state != &"jump_heavy":
-			front_hand.x += facing * minf(48.0, state_frame * 7.0)
-		draw_line(Vector2(lean, -80.0 + crouch_offset), front_hand, accent_color, 10.0)
-		draw_circle(front_hand, 10.0, Color("fff4b8") if state == &"special" else body_color.lightened(0.35))
-
-		if state == &"jump_heavy":
-			var kick_extension := sin(clampf(float(state_frame) / 18.0, 0.0, 1.0) * PI)
-			var kick_foot := Vector2(facing * (34.0 + 55.0 * kick_extension), -34.0 + 18.0 * kick_extension)
-			draw_line(Vector2(facing * 10.0, -24.0), kick_foot, accent_color, 12.0)
-			draw_circle(kick_foot, 9.0, Color("fff4b8"))
-			draw_line(Vector2(-facing * 8.0, -24.0), Vector2(-facing * 25.0, -5.0), accent_color, 10.0)
-		elif not is_on_ground():
-			draw_line(Vector2(-12.0, -22.0), Vector2(-25.0, -4.0), accent_color, 10.0)
-			draw_line(Vector2(12.0, -22.0), Vector2(27.0, -9.0), accent_color, 10.0)
-		else:
-			draw_line(Vector2(-12.0, -20.0), Vector2(-20.0, 0.0), accent_color, 10.0)
-			draw_line(Vector2(12.0, -20.0), Vector2(20.0, 0.0), accent_color, 10.0)
+	_draw_attack_effects()
 
 	if state == &"blockstun":
-		draw_arc(Vector2(facing * -29.0, -70.0), 42.0, -1.5, 1.5, 18, Color("9bf6ff"), 5.0)
+		var guard_points := PackedVector2Array()
+		for step in 13:
+			var guard_t := float(step) / 12.0
+			var guard_angle := lerpf(-1.25, 1.25, guard_t)
+			guard_points.append(Vector2(cos(guard_angle) * 40.0 * facing, -68.0 + sin(guard_angle) * 40.0))
+		draw_polyline(guard_points, Color("9bf6ff"), 5.0, true)
 
 	if debug_boxes:
 		var local_hurt := hurt_rect()
@@ -553,3 +598,59 @@ func _draw() -> void:
 			local_attack.position -= position
 			draw_rect(local_attack, Color(1.0, 0.18, 0.18, 0.22), true)
 			draw_rect(local_attack, Color(1.0, 0.2, 0.2, 0.95), false, 2.0)
+
+
+func _draw_fallback_fighter() -> void:
+	var body_rect := Rect2(-25.0, -102.0, 50.0, 82.0)
+	draw_rect(body_rect, body_color, true)
+	draw_rect(body_rect, accent_color, false, 3.0)
+	draw_circle(Vector2(0.0, -122.0), 22.0, body_color.lightened(0.18))
+	draw_arc(Vector2(0.0, -122.0), 22.0, 0.0, TAU, 24, accent_color, 3.0)
+	draw_line(Vector2(-12.0, -22.0), Vector2(-21.0, 0.0), accent_color, 10.0)
+	draw_line(Vector2(12.0, -22.0), Vector2(21.0, 0.0), accent_color, 10.0)
+
+
+func _draw_attack_effects() -> void:
+	if not ATTACKS.has(state):
+		return
+
+	var data := current_attack()
+	var active := state_frame > int(data.startup) and state_frame <= int(data.startup + data.active)
+	var effect_color := body_color.lightened(0.55)
+	effect_color.a = 0.9 if active else 0.38
+	var attack_progress := clampf(
+		float(state_frame) / maxf(1.0, float(data.startup + data.active)),
+		0.0,
+		1.0
+	)
+
+	if state == &"special":
+		var energy_center := Vector2(facing * (46.0 + attack_progress * 26.0), -78.0)
+		var energy_radius := 14.0 + 12.0 * attack_progress
+		draw_circle(energy_center, energy_radius, Color(effect_color, 0.2 if active else 0.1))
+		draw_arc(energy_center, energy_radius, 0.0, TAU, 24, effect_color, 5.0, true)
+		draw_arc(energy_center, energy_radius + 9.0, -1.0, 1.8, 16, Color("fff3c4"), 2.0, true)
+		return
+
+	if state == &"throw":
+		var throw_direction := -facing if throw_backwards else facing
+		var grab_center := Vector2(throw_direction * 47.0, -76.0)
+		draw_arc(grab_center, 22.0 + attack_progress * 8.0, -1.0, 2.1, 18, effect_color, 4.0, true)
+		return
+
+	if state == &"light" or state == &"jump_light":
+		var strike_y := -82.0 if state == &"light" else -74.0
+		var strike_start := Vector2(facing * 29.0, strike_y)
+		var strike_end := Vector2(facing * (52.0 + attack_progress * 34.0), strike_y - 8.0)
+		draw_line(strike_start, strike_end, effect_color, 5.0, true)
+		draw_circle(strike_end, 5.5, effect_color)
+		return
+
+	var arc_points := PackedVector2Array()
+	var arc_center_y := -62.0 if state == &"heavy" else -40.0
+	var arc_radius := 74.0 if state == &"heavy" else 82.0
+	for step in 14:
+		var arc_t := float(step) / 13.0
+		var arc_angle := lerpf(-1.15, 0.48, arc_t)
+		arc_points.append(Vector2(cos(arc_angle) * arc_radius * facing, arc_center_y + sin(arc_angle) * arc_radius))
+	draw_polyline(arc_points, effect_color, 6.0, true)

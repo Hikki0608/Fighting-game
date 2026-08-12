@@ -3,11 +3,29 @@ extends Node2D
 const FighterScene := preload("res://scripts/fighter.gd")
 const CpuControllerScript := preload("res://scripts/cpu_controller.gd")
 const ArenaBackgroundTexture := preload("res://assets/arena_background.svg")
+const RenFighterTexture := preload("res://assets/characters/ren_fighter.png")
+const VelFighterTexture := preload("res://assets/characters/vel_fighter.png")
 const SCREEN_SIZE := Vector2(1152.0, 648.0)
 const ROUND_SECONDS := 99
 const ROUNDS_TO_WIN := 2
 const MODE_SOLO: StringName = &"solo"
 const MODE_VERSUS: StringName = &"versus"
+const CHARACTER_ROSTER := [
+	{
+		"id": &"ren",
+		"name": "REN",
+		"title": "STYLE: TBD",
+		"color": Color("2cccf4"),
+		"texture": RenFighterTexture
+	},
+	{
+		"id": &"vel",
+		"name": "VEL",
+		"title": "STYLE: TBD",
+		"color": Color("ff4f86"),
+		"texture": VelFighterTexture
+	}
+]
 const WEB_FULLSCREEN_HELPER := """
 (() => {
 	const helperName = "FramebreakFullscreen";
@@ -107,6 +125,8 @@ var announcement_sub := ""
 var combat_callout_frames := 0
 var game_mode: StringName = MODE_SOLO
 var mode_selection := 0
+var character_selection := [0, 1]
+var selecting_player := 0
 var cpu_controller: CpuController
 var meta_key_state := {}
 
@@ -115,9 +135,15 @@ var subtitle_label: Label
 var training_label: Label
 var mode_label: Label
 var menu_layer: CanvasLayer
+var character_select_layer: CanvasLayer
 var solo_button: Button
 var versus_button: Button
 var fullscreen_button: Button
+var character_prompt_label: Label
+var character_summary_label: Label
+var character_hint_label: Label
+var character_buttons: Array[Button] = []
+var character_status_labels: Array[Label] = []
 var last_drawn_p1_health := -1
 var last_drawn_p2_health := -1
 var last_drawn_timer := -1
@@ -133,6 +159,7 @@ func _ready() -> void:
 	_create_fighters()
 	_create_ui()
 	_create_mode_menu()
+	_create_character_select_menu()
 	_initialize_fullscreen_support()
 	_show_mode_menu()
 	_request_hud_redraw()
@@ -196,8 +223,10 @@ func _create_fighters() -> void:
 	var p2 := FighterScene.new() as Fighter
 	add_child(p1)
 	add_child(p2)
-	p1.setup(0, "PLAYER 1", Color("2cccf4"), Vector2(330.0, Fighter.GROUND_Y))
-	p2.setup(1, "PLAYER 2", Color("ff4f86"), Vector2(822.0, Fighter.GROUND_Y))
+	var ren: Dictionary = CHARACTER_ROSTER[0]
+	var vel: Dictionary = CHARACTER_ROSTER[1]
+	p1.setup(0, ren.name, ren.color, Vector2(330.0, Fighter.GROUND_Y), ren.texture)
+	p2.setup(1, vel.name, vel.color, Vector2(822.0, Fighter.GROUND_Y), vel.texture)
 	fighters = [p1, p2]
 
 
@@ -332,9 +361,271 @@ func _make_button_style(fill: Color, border: Color, border_width: int) -> StyleB
 	return style
 
 
+func _create_character_select_menu() -> void:
+	character_select_layer = CanvasLayer.new()
+	character_select_layer.layer = 11
+	character_select_layer.visible = false
+	add_child(character_select_layer)
+
+	var backdrop := ColorRect.new()
+	backdrop.position = Vector2.ZERO
+	backdrop.size = SCREEN_SIZE
+	backdrop.color = Color(0.012, 0.027, 0.043, 0.95)
+	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	character_select_layer.add_child(backdrop)
+
+	var header_line := ColorRect.new()
+	header_line.position = Vector2(112.0, 88.0)
+	header_line.size = Vector2(928.0, 2.0)
+	header_line.color = Color("3a8ca0")
+	header_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	character_select_layer.add_child(header_line)
+
+	var title := Label.new()
+	title.position = Vector2(226.0, 28.0)
+	title.size = Vector2(700.0, 58.0)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.text = "SELECT YOUR FIGHTER"
+	title.add_theme_font_size_override("font_size", 38)
+	title.add_theme_color_override("font_color", Color("fff3c4"))
+	title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
+	title.add_theme_constant_override("shadow_offset_x", 3)
+	title.add_theme_constant_override("shadow_offset_y", 3)
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	character_select_layer.add_child(title)
+
+	character_prompt_label = Label.new()
+	character_prompt_label.position = Vector2(176.0, 98.0)
+	character_prompt_label.size = Vector2(800.0, 42.0)
+	character_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	character_prompt_label.add_theme_font_size_override("font_size", 20)
+	character_prompt_label.add_theme_color_override("font_color", Color("91ddea"))
+	character_prompt_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	character_select_layer.add_child(character_prompt_label)
+
+	var card_positions := [Vector2(128.0, 148.0), Vector2(612.0, 148.0)]
+	for index in CHARACTER_ROSTER.size():
+		var card := _make_character_card(index, card_positions[index])
+		character_buttons.append(card)
+		character_select_layer.add_child(card)
+
+	var versus_mark := Label.new()
+	versus_mark.position = Vector2(526.0, 298.0)
+	versus_mark.size = Vector2(100.0, 64.0)
+	versus_mark.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	versus_mark.text = "VS"
+	versus_mark.add_theme_font_size_override("font_size", 34)
+	versus_mark.add_theme_color_override("font_color", Color("fff3c4"))
+	versus_mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	character_select_layer.add_child(versus_mark)
+
+	character_summary_label = Label.new()
+	character_summary_label.position = Vector2(126.0, 538.0)
+	character_summary_label.size = Vector2(900.0, 32.0)
+	character_summary_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	character_summary_label.add_theme_font_size_override("font_size", 18)
+	character_summary_label.add_theme_color_override("font_color", Color("d8f7ff"))
+	character_summary_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	character_select_layer.add_child(character_summary_label)
+
+	character_hint_label = Label.new()
+	character_hint_label.position = Vector2(126.0, 578.0)
+	character_hint_label.size = Vector2(900.0, 44.0)
+	character_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	character_hint_label.add_theme_font_size_override("font_size", 15)
+	character_hint_label.add_theme_color_override("font_color", Color("91acb7"))
+	character_hint_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	character_select_layer.add_child(character_hint_label)
+
+
+func _make_character_card(index: int, card_position: Vector2) -> Button:
+	var character_data: Dictionary = CHARACTER_ROSTER[index]
+	var accent: Color = character_data["color"]
+	var card := Button.new()
+	card.position = card_position
+	card.size = Vector2(412.0, 374.0)
+	card.focus_mode = Control.FOCUS_NONE
+	card.clip_contents = true
+	card.tooltip_text = "Select %s" % str(character_data["name"])
+	card.add_theme_stylebox_override("normal", _make_button_style(Color("0d1c26"), Color("31505a"), 2))
+	card.add_theme_stylebox_override("hover", _make_button_style(Color("132b36"), accent, 4))
+	card.add_theme_stylebox_override("pressed", _make_button_style(Color("193944"), Color("fff3c4"), 4))
+	card.add_theme_stylebox_override("focus", _make_button_style(Color("132b36"), accent, 4))
+	card.pressed.connect(_on_character_card_pressed.bind(index))
+
+	var color_bar := ColorRect.new()
+	color_bar.position = Vector2(0.0, 0.0)
+	color_bar.size = Vector2(8.0, card.size.y)
+	color_bar.color = accent
+	color_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(color_bar)
+
+	var portrait := TextureRect.new()
+	portrait.position = Vector2(76.0, 14.0)
+	portrait.size = Vector2(260.0, 258.0)
+	portrait.texture = character_data["texture"] as Texture2D
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	portrait.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(portrait)
+
+	var name_label := Label.new()
+	name_label.position = Vector2(22.0, 268.0)
+	name_label.size = Vector2(368.0, 48.0)
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.text = str(character_data["name"])
+	name_label.add_theme_font_size_override("font_size", 32)
+	name_label.add_theme_color_override("font_color", Color("fff3c4"))
+	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(name_label)
+
+	var title_label := Label.new()
+	title_label.position = Vector2(22.0, 310.0)
+	title_label.size = Vector2(368.0, 26.0)
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_label.text = str(character_data["title"])
+	title_label.add_theme_font_size_override("font_size", 14)
+	title_label.add_theme_color_override("font_color", accent.lightened(0.25))
+	title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(title_label)
+
+	var status_label := Label.new()
+	status_label.position = Vector2(22.0, 340.0)
+	status_label.size = Vector2(368.0, 26.0)
+	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	status_label.add_theme_font_size_override("font_size", 14)
+	status_label.add_theme_color_override("font_color", Color("91acb7"))
+	status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(status_label)
+	character_status_labels.append(status_label)
+	return card
+
+
+func _show_character_select(selected_mode: StringName) -> void:
+	phase = &"character_select"
+	game_mode = selected_mode
+	position = Vector2.ZERO
+	menu_layer.visible = false
+	character_select_layer.visible = true
+	announcement_label.visible = false
+	subtitle_label.visible = false
+	mode_label.visible = false
+	training_label.visible = false
+	selecting_player = 0
+	character_selection = [0, 1]
+	for fighter in fighters:
+		fighter.visible = false
+		fighter.clear_input()
+	_refresh_character_select()
+	queue_redraw()
+
+
+func _refresh_character_select() -> void:
+	if game_mode == MODE_SOLO:
+		character_selection[1] = (character_selection[0] + 1) % CHARACTER_ROSTER.size()
+		character_prompt_label.text = "PLAYER 1  -  CHOOSE YOUR FIGHTER"
+		character_hint_label.text = "A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / F: CONFIRM    ESC: BACK"
+	else:
+		character_prompt_label.text = "PLAYER %d  -  CHOOSE YOUR FIGHTER" % (selecting_player + 1)
+		character_hint_label.text = (
+			"A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / F: CONFIRM    ESC: BACK"
+			if selecting_player == 0
+			else "LEFT / RIGHT OR A / D: CHOOSE    ENTER / SPACE / J: CONFIRM    ESC: BACK"
+		)
+
+	for index in CHARACTER_ROSTER.size():
+		var character_data: Dictionary = CHARACTER_ROSTER[index]
+		var accent: Color = character_data["color"]
+		var is_current: bool = character_selection[selecting_player] == index
+		var is_p1_locked: bool = (
+			game_mode == MODE_VERSUS
+			and selecting_player == 1
+			and character_selection[0] == index
+		)
+		var fill := Color("0d1c26").lerp(accent.darkened(0.55), 0.18 if is_current else 0.06)
+		var border := Color("fff3c4") if is_current else Color("31505a")
+		var width := 5 if is_current else 2
+		character_buttons[index].add_theme_stylebox_override("normal", _make_button_style(fill, border, width))
+		character_buttons[index].add_theme_stylebox_override(
+			"hover",
+			_make_button_style(fill.lightened(0.07), Color("fff3c4") if is_current else accent, 5 if is_current else 4)
+		)
+		if is_p1_locked and is_current:
+			character_status_labels[index].text = "P1 LOCKED  /  P2 SELECTED"
+		elif is_p1_locked:
+			character_status_labels[index].text = "P1 LOCKED"
+		elif is_current:
+			character_status_labels[index].text = "P%d SELECTED" % (selecting_player + 1)
+		else:
+			character_status_labels[index].text = "CHOOSE"
+		character_status_labels[index].add_theme_color_override(
+			"font_color",
+			Color("fff3c4") if is_current else accent.lightened(0.2)
+		)
+
+	var p1_data: Dictionary = CHARACTER_ROSTER[character_selection[0]]
+	var p2_data: Dictionary = CHARACTER_ROSTER[character_selection[1]]
+	var opponent_label := "CPU" if game_mode == MODE_SOLO else "P2"
+	character_summary_label.text = "P1  %s        VS        %s  %s" % [
+		str(p1_data["name"]),
+		opponent_label,
+		str(p2_data["name"])
+	]
+
+
+func _handle_character_select_input() -> void:
+	var left_pressed := _key_just_pressed(KEY_LEFT)
+	left_pressed = _key_just_pressed(KEY_A) or left_pressed
+	var right_pressed := _key_just_pressed(KEY_RIGHT)
+	right_pressed = _key_just_pressed(KEY_D) or right_pressed
+	var confirm_pressed := _key_just_pressed(KEY_ENTER)
+	confirm_pressed = _key_just_pressed(KEY_SPACE) or confirm_pressed
+	if selecting_player == 0:
+		confirm_pressed = _key_just_pressed(KEY_F) or confirm_pressed
+	else:
+		confirm_pressed = _key_just_pressed(KEY_J) or confirm_pressed
+
+	if left_pressed:
+		character_selection[selecting_player] = wrapi(
+			character_selection[selecting_player] - 1,
+			0,
+			CHARACTER_ROSTER.size()
+		)
+		_refresh_character_select()
+	elif right_pressed:
+		character_selection[selecting_player] = wrapi(
+			character_selection[selecting_player] + 1,
+			0,
+			CHARACTER_ROSTER.size()
+		)
+		_refresh_character_select()
+
+	if confirm_pressed:
+		_confirm_character_selection()
+
+
+func _on_character_card_pressed(index: int) -> void:
+	character_selection[selecting_player] = index
+	_refresh_character_select()
+	_confirm_character_selection()
+
+
+func _confirm_character_selection() -> void:
+	if game_mode == MODE_SOLO:
+		_start_match(game_mode)
+		return
+	if selecting_player == 0:
+		selecting_player = 1
+		character_selection[1] = (character_selection[0] + 1) % CHARACTER_ROSTER.size()
+		_refresh_character_select()
+		return
+	_start_match(game_mode)
+
+
 func _physics_process(_delta: float) -> void:
 	_handle_system_input()
-	if phase == &"menu":
+	if phase == &"menu" or phase == &"character_select":
 		_update_ui()
 		_request_hud_redraw()
 		return
@@ -388,6 +679,14 @@ func _physics_process(_delta: float) -> void:
 func _handle_system_input() -> void:
 	if phase == &"menu":
 		_handle_mode_menu_input()
+		return
+	if phase == &"character_select":
+		var back_pressed := _key_just_pressed(KEY_M)
+		back_pressed = _key_just_pressed(KEY_ESCAPE) or back_pressed
+		if back_pressed:
+			_show_mode_menu()
+		else:
+			_handle_character_select_input()
 		return
 
 	var menu_pressed := _key_just_pressed(KEY_M)
@@ -447,12 +746,14 @@ func _show_mode_menu() -> void:
 	subtitle_label.visible = false
 	mode_label.visible = false
 	menu_layer.visible = true
+	character_select_layer.visible = false
 	mode_selection = 0
 	for fighter in fighters:
 		fighter.visible = false
 		fighter.clear_input()
 		fighter.set_debug_boxes(false)
 	_update_mode_selection()
+	queue_redraw()
 
 
 func _update_mode_selection() -> void:
@@ -463,29 +764,37 @@ func _update_mode_selection() -> void:
 
 
 func _start_solo_mode() -> void:
-	_start_match(MODE_SOLO)
+	_show_character_select(MODE_SOLO)
 
 
 func _start_versus_mode() -> void:
-	_start_match(MODE_VERSUS)
+	_show_character_select(MODE_VERSUS)
 
 
 func _start_match(selected_mode: StringName) -> void:
 	game_mode = selected_mode
 	menu_layer.visible = false
+	character_select_layer.visible = false
 	announcement_label.visible = true
 	subtitle_label.visible = true
 	mode_label.visible = true
 	for fighter in fighters:
 		fighter.visible = true
 
-	fighters[0].fighter_name = "PLAYER 1"
-	fighters[1].fighter_name = "CPU" if game_mode == MODE_SOLO else "PLAYER 2"
+	for index in fighters.size():
+		var character_data: Dictionary = CHARACTER_ROSTER[character_selection[index]]
+		fighters[index].configure_character(
+			StringName(character_data["id"]),
+			str(character_data["name"]),
+			character_data["color"],
+			character_data["texture"] as Texture2D
+		)
 	wins = [0, 0]
 	round_number = 1
 	training_visible = false
 	training_label.visible = false
 	cpu_controller.reset()
+	_invalidate_hud_cache()
 	_start_round()
 
 
@@ -653,6 +962,16 @@ func _set_label_text_if_changed(label: Label, next_text: String) -> void:
 		label.text = next_text
 
 
+func _invalidate_hud_cache() -> void:
+	last_drawn_p1_health = -1
+	last_drawn_p2_health = -1
+	last_drawn_timer = -1
+	last_drawn_p1_wins = -1
+	last_drawn_p2_wins = -1
+	last_drawn_spark_count = -1
+	queue_redraw()
+
+
 func _request_hud_redraw() -> void:
 	var timer_seconds := ceili(float(round_frames) / 60.0)
 	var sparks_need_animation := not hit_sparks.is_empty()
@@ -677,19 +996,26 @@ func _request_hud_redraw() -> void:
 
 
 func _draw() -> void:
+	if phase == &"menu" or phase == &"character_select":
+		return
+
 	# Health and round HUD.
 	draw_rect(Rect2(48, 40, 450, 34), Color("101820"), true)
 	draw_rect(Rect2(654, 40, 450, 34), Color("101820"), true)
 	var p1_width := 442.0 * float(fighters[0].health) / 1000.0
 	var p2_width := 442.0 * float(fighters[1].health) / 1000.0
-	draw_rect(Rect2(52, 44, p1_width, 26), Color("2cccf4"), true)
-	draw_rect(Rect2(1100.0 - p2_width, 44, p2_width, 26), Color("ff4f86"), true)
-	draw_rect(Rect2(48, 40, 450, 34), Color("d6f7ff"), false, 2.0)
-	draw_rect(Rect2(654, 40, 450, 34), Color("ffd5e2"), false, 2.0)
+	var p1_color := fighters[0].body_color
+	var p2_color := fighters[1].body_color
+	var p1_accent := fighters[0].accent_color
+	var p2_accent := fighters[1].accent_color
+	draw_rect(Rect2(52, 44, p1_width, 26), p1_color, true)
+	draw_rect(Rect2(1100.0 - p2_width, 44, p2_width, 26), p2_color, true)
+	draw_rect(Rect2(48, 40, 450, 34), p1_accent, false, 2.0)
+	draw_rect(Rect2(654, 40, 450, 34), p2_accent, false, 2.0)
 
 	var font := ThemeDB.fallback_font
-	draw_string(font, Vector2(50, 99), fighters[0].fighter_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 19, Color("d6f7ff"))
-	draw_string(font, Vector2(654, 99), fighters[1].fighter_name, HORIZONTAL_ALIGNMENT_RIGHT, 448, 19, Color("ffd5e2"))
+	draw_string(font, Vector2(50, 99), fighters[0].fighter_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 19, p1_accent)
+	draw_string(font, Vector2(654, 99), fighters[1].fighter_name, HORIZONTAL_ALIGNMENT_RIGHT, 448, 19, p2_accent)
 	var timer_text := "%02d" % ceili(float(round_frames) / 60.0)
 	draw_string(font, Vector2(516, 76), timer_text, HORIZONTAL_ALIGNMENT_CENTER, 120, 36, Color("fff3c4"))
 	for i in wins[0]:
