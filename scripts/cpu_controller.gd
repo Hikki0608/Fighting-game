@@ -38,8 +38,11 @@ func build_intent(cpu: Fighter, opponent: Fighter) -> Dictionary:
 
 	if not cpu.is_on_ground():
 		move_axis = toward
-		if attack_cooldown <= 0 and rng.randf() < 0.055:
-			buttons.light = true
+		if attack_cooldown <= 0 and distance < MID_RANGE and rng.randf() < 0.075:
+			if rng.randf() < 0.62:
+				buttons.light = true
+			else:
+				buttons.heavy = true
 			attack_cooldown = 22
 		return _intent(Vector2(move_axis, 0.0), buttons)
 
@@ -103,6 +106,8 @@ func build_intent(cpu: Fighter, opponent: Fighter) -> Dictionary:
 	else:
 		if roll < 0.24:
 			buttons.throw = true
+			if rng.randf() < 0.32:
+				move_axis = away
 		elif roll < 0.55:
 			buttons.light = true
 		elif roll < 0.76:

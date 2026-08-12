@@ -20,6 +20,7 @@ var screen_shake := 0.0
 var hit_sparks: Array[Dictionary] = []
 var announcement := "ROUND 1"
 var announcement_sub := ""
+var combat_callout_frames := 0
 var game_mode: StringName = MODE_SOLO
 var mode_selection := 0
 var cpu_controller: CpuController
@@ -112,7 +113,7 @@ func _create_mode_menu() -> void:
 	var backdrop := ColorRect.new()
 	backdrop.position = Vector2.ZERO
 	backdrop.size = SCREEN_SIZE
-	backdrop.color = Color(0.015, 0.045, 0.07, 0.94)
+	backdrop.color = Color(0.015, 0.035, 0.055, 0.88)
 	menu_layer.add_child(backdrop)
 
 	var title := Label.new()
@@ -344,6 +345,7 @@ func _start_round() -> void:
 	round_frames = ROUND_SECONDS * 60
 	global_hitstop = 0
 	hit_sparks.clear()
+	combat_callout_frames = 0
 	cpu_controller.reset()
 	fighters[0].facing = 1
 	fighters[1].facing = -1
@@ -380,6 +382,15 @@ func _finish_round() -> void:
 
 
 func _resolve_body_collision() -> void:
+	# Airborne fighters do not push the opponent sideways. Their movement can
+	# carry them across the opponent; ground collision resumes on landing.
+	if not fighters[0].is_on_ground() or not fighters[1].is_on_ground():
+		return
+	var p1_hurt := fighters[0].hurt_rect()
+	var p2_hurt := fighters[1].hurt_rect()
+	var vertical_overlap := minf(p1_hurt.end.y, p2_hurt.end.y) - maxf(p1_hurt.position.y, p2_hurt.position.y)
+	if vertical_overlap <= 22.0:
+		return
 	var delta_x := fighters[1].position.x - fighters[0].position.x
 	var min_distance := Fighter.BODY_WIDTH * 0.92
 	if absf(delta_x) >= min_distance:
@@ -403,8 +414,12 @@ func _resolve_attacks() -> void:
 		if attacker.state == &"throw" and (not defender.is_on_ground() or defender.state == &"hitstun" or defender.state == &"blockstun"):
 			continue
 
+		var attack_data := attacker.current_attack()
 		attacker.mark_attack_connected()
-		var result := defender.receive_attack(attacker.current_attack(), attacker.position.x)
+		var forced_push_direction := 0.0
+		if bool(attack_data.get("back_throw", false)):
+			forced_push_direction = _perform_back_throw(attacker, defender)
+		var result := defender.receive_attack(attack_data, attacker.position.x, forced_push_direction)
 		global_hitstop = result.hitstop
 		screen_shake = 8.0 if not result.blocked else 3.0
 		hit_sparks.append({
@@ -412,11 +427,40 @@ func _resolve_attacks() -> void:
 			"frames": 12,
 			"blocked": result.blocked
 		})
-		if result.combo > 1 and not result.blocked:
+		if result.back_throw:
+			announcement_sub = "BACK THROW"
+			combat_callout_frames = 60
+		elif result.combo > 1 and not result.blocked:
 			announcement_sub = "%d HIT COMBO" % result.combo
+			combat_callout_frames = 45
 		if result.ko:
 			_finish_round()
 		break
+
+
+func _perform_back_throw(attacker: Fighter, defender: Fighter) -> float:
+	var original_facing := float(attacker.facing)
+	var toss_direction := -original_facing
+	var attacker_x := attacker.position.x + original_facing * 30.0
+	var defender_x := attacker.position.x + toss_direction * 72.0
+	var left_limit := Fighter.ARENA_LEFT + Fighter.BODY_WIDTH * 0.5
+	var right_limit := Fighter.ARENA_RIGHT - Fighter.BODY_WIDTH * 0.5
+	var pair_min := minf(attacker_x, defender_x)
+	var pair_max := maxf(attacker_x, defender_x)
+	if pair_min < left_limit:
+		var shift_right := left_limit - pair_min
+		attacker_x += shift_right
+		defender_x += shift_right
+	elif pair_max > right_limit:
+		var shift_left := pair_max - right_limit
+		attacker_x -= shift_left
+		defender_x -= shift_left
+
+	attacker.position.x = attacker_x
+	defender.position.x = defender_x
+	attacker.facing = int(toss_direction)
+	defender.facing = -attacker.facing
+	return toss_direction
 
 
 func _update_effects() -> void:
@@ -427,6 +471,10 @@ func _update_effects() -> void:
 			hit_sparks.remove_at(index)
 	screen_shake = move_toward(screen_shake, 0.0, 1.35)
 	position = Vector2(randf_range(-screen_shake, screen_shake), randf_range(-screen_shake * 0.4, screen_shake * 0.4)) if screen_shake > 0.1 else Vector2.ZERO
+	if combat_callout_frames > 0:
+		combat_callout_frames -= 1
+		if combat_callout_frames == 0 and phase == &"fight":
+			announcement_sub = ""
 
 
 func _update_ui() -> void:
@@ -434,10 +482,10 @@ func _update_ui() -> void:
 	subtitle_label.text = announcement_sub
 	if game_mode == MODE_SOLO:
 		mode_label.text = "1 PLAYER  •  CPU STANDARD"
-		help_label.text = "P1  A/D move  W/S jump/crouch  F light  G heavy  H special  R throw     |     F1 frame data  •  M mode select"
+		help_label.text = "P1 A/D move  W/S jump/crouch  F/G attack  H special  R throw  •  Air F/G  •  Back+R back throw  •  M menu"
 	else:
 		mode_label.text = "2 PLAYERS  •  LOCAL VERSUS"
-		help_label.text = "P1  A/D W/S F/G/H/R     |     P2  Arrows J/K/L/I     |     F1 frame data  •  M mode select"
+		help_label.text = "P1 A/D W/S F/G/H/R  •  P2 Arrows J/K/L/I  •  Air: light/heavy  •  Back+throw  •  M menu"
 	if phase == &"fight" and announcement_sub.ends_with("HIT COMBO"):
 		# The combo text is transient and clears when the defender recovers.
 		if fighters[0].combo_received == 0 and fighters[1].combo_received == 0:
@@ -451,18 +499,7 @@ func _update_ui() -> void:
 
 
 func _draw() -> void:
-	# Arena backdrop.
-	draw_rect(Rect2(0, 0, SCREEN_SIZE.x, SCREEN_SIZE.y), Color("071018"), true)
-	for i in 12:
-		var x := float(i) * 104.0 - 40.0
-		draw_colored_polygon(PackedVector2Array([
-			Vector2(x, 0), Vector2(x + 120.0, 0),
-			Vector2(x - 110.0, 558.0), Vector2(x - 230.0, 558.0)
-		]), Color(0.04, 0.12, 0.17, 0.48))
-	draw_rect(Rect2(0, 460, SCREEN_SIZE.x, 98), Color("102b35"), true)
-	draw_line(Vector2(Fighter.ARENA_LEFT, Fighter.GROUND_Y), Vector2(Fighter.ARENA_RIGHT, Fighter.GROUND_Y), Color("41c6cf"), 4.0)
-	for x in range(int(Fighter.ARENA_LEFT), int(Fighter.ARENA_RIGHT) + 1, 50):
-		draw_line(Vector2(x, Fighter.GROUND_Y), Vector2(576.0 + (x - 576.0) * 1.15, 648.0), Color(0.12, 0.34, 0.4, 0.45), 1.0)
+	_draw_arena_background()
 
 	# Health and round HUD.
 	draw_rect(Rect2(48, 40, 450, 34), Color("101820"), true)
@@ -491,3 +528,96 @@ func _draw() -> void:
 			var angle := TAU * float(ray) / 8.0
 			draw_line(spark.position, spark.position + Vector2.from_angle(angle) * radius, spark_color, 4.0)
 		draw_circle(spark.position, radius * 0.28, spark_color)
+
+
+func _draw_arena_background() -> void:
+	# Sunset sky behind the open-air stone colosseum.
+	var sky_top := Color("101a32")
+	var sky_bottom := Color("72443b")
+	for band in 14:
+		var t := float(band) / 13.0
+		draw_rect(Rect2(0.0, float(band) * 12.0, SCREEN_SIZE.x, 13.0), sky_top.lerp(sky_bottom, t), true)
+	draw_circle(Vector2(930.0, 105.0), 48.0, Color(1.0, 0.72, 0.38, 0.28))
+	draw_circle(Vector2(930.0, 105.0), 34.0, Color("f4bd69"))
+
+	# Upper stone facade and cornices.
+	draw_colored_polygon(PackedVector2Array([
+		Vector2(0, 138), Vector2(1152, 138), Vector2(1152, 382), Vector2(0, 382)
+	]), Color("75675c"))
+	draw_rect(Rect2(0, 130, 1152, 18), Color("b6a184"), true)
+	draw_rect(Rect2(0, 148, 1152, 8), Color("493f3b"), true)
+	draw_rect(Rect2(0, 306, 1152, 18), Color("a58e73"), true)
+	draw_rect(Rect2(0, 324, 1152, 8), Color("493f3b"), true)
+
+	# Two rows of arched entrances create the arena bowl.
+	for column in 12:
+		var arch_x := 48.0 + float(column) * 96.0
+		_draw_stone_arch(Vector2(arch_x, 172.0), 60.0, 116.0)
+	for column in 15:
+		var lower_arch_x := 32.0 + float(column) * 78.0
+		_draw_stone_arch(Vector2(lower_arch_x, 338.0), 48.0, 92.0)
+
+	# Hanging house banners and a central arena crest.
+	_draw_banner(Vector2(116.0, 154.0), Color("245e7a"), Color("8defff"))
+	_draw_banner(Vector2(984.0, 154.0), Color("8d3150"), Color("ffd5e2"))
+	draw_circle(Vector2(576.0, 232.0), 43.0, Color("463c36"))
+	draw_circle(Vector2(576.0, 232.0), 35.0, Color("c4a66e"), false, 6.0)
+	draw_string(ThemeDB.fallback_font, Vector2(541.0, 245.0), "FB", HORIZONTAL_ALIGNMENT_CENTER, 70.0, 28, Color("f7df9b"))
+
+	# Crowd terraces. Each spectator is deliberately tiny so fighters remain clear.
+	draw_rect(Rect2(0, 378, 1152, 84), Color("241f24"), true)
+	for tier in 4:
+		draw_line(Vector2(0, 385.0 + tier * 20.0), Vector2(1152, 385.0 + tier * 20.0), Color("61534b"), 3.0)
+		for spectator in 48:
+			var crowd_x := 8.0 + spectator * 24.0 + float(tier % 2) * 8.0
+			var crowd_y := 392.0 + tier * 18.0 + float((spectator + tier) % 3) * 2.0
+			var crowd_color := Color("d5ad77") if (spectator + tier) % 4 == 0 else Color("80706c")
+			draw_circle(Vector2(crowd_x, crowd_y), 3.2, crowd_color)
+
+	_draw_torch(Vector2(252.0, 432.0))
+	_draw_torch(Vector2(900.0, 432.0))
+
+	# Sand-and-stone fighting floor with strong perspective lines.
+	draw_rect(Rect2(0, 460, SCREEN_SIZE.x, 188), Color("6f5843"), true)
+	draw_colored_polygon(PackedVector2Array([
+		Vector2(0, 460), Vector2(1152, 460), Vector2(1076, Fighter.GROUND_Y), Vector2(76, Fighter.GROUND_Y)
+	]), Color("9a7955"))
+	for strip in 7:
+		var strip_y := 468.0 + strip * 15.0
+		var inset := (strip_y - 460.0) * 0.42
+		draw_line(Vector2(inset, strip_y), Vector2(1152.0 - inset, strip_y), Color(0.35, 0.25, 0.18, 0.48), 1.0)
+	for x in range(int(Fighter.ARENA_LEFT), int(Fighter.ARENA_RIGHT) + 1, 50):
+		draw_line(Vector2(x, Fighter.GROUND_Y), Vector2(576.0 + (x - 576.0) * 1.34, 648.0), Color(0.32, 0.22, 0.15, 0.58), 1.0)
+	draw_line(Vector2(Fighter.ARENA_LEFT, Fighter.GROUND_Y), Vector2(Fighter.ARENA_RIGHT, Fighter.GROUND_Y), Color("f2ca7f"), 5.0)
+	draw_line(Vector2(Fighter.ARENA_LEFT, Fighter.GROUND_Y + 6.0), Vector2(Fighter.ARENA_RIGHT, Fighter.GROUND_Y + 6.0), Color("5e3928"), 2.0)
+
+
+func _draw_stone_arch(origin: Vector2, width: float, height: float) -> void:
+	var radius := width * 0.5
+	var arch_center := Vector2(origin.x, origin.y + radius)
+	var opening_color := Color("18191e")
+	draw_circle(arch_center, radius, opening_color)
+	draw_rect(Rect2(origin.x - radius, arch_center.y, width, height - radius), opening_color, true)
+	draw_arc(arch_center, radius + 5.0, PI, TAU, 24, Color("c2ad90"), 5.0)
+	draw_line(Vector2(origin.x - radius - 5.0, arch_center.y), Vector2(origin.x - radius - 5.0, origin.y + height), Color("b29c82"), 5.0)
+	draw_line(Vector2(origin.x + radius + 5.0, arch_center.y), Vector2(origin.x + radius + 5.0, origin.y + height), Color("554b45"), 5.0)
+
+
+func _draw_banner(origin: Vector2, banner_color: Color, emblem_color: Color) -> void:
+	draw_line(origin + Vector2(-6.0, 0.0), origin + Vector2(58.0, 0.0), Color("d7bd88"), 5.0)
+	draw_colored_polygon(PackedVector2Array([
+		origin, origin + Vector2(52.0, 0.0), origin + Vector2(52.0, 112.0),
+		origin + Vector2(26.0, 94.0), origin + Vector2(0.0, 112.0)
+	]), banner_color)
+	draw_circle(origin + Vector2(26.0, 45.0), 13.0, emblem_color, false, 4.0)
+	draw_line(origin + Vector2(13.0, 70.0), origin + Vector2(39.0, 70.0), emblem_color, 4.0)
+
+
+func _draw_torch(base: Vector2) -> void:
+	draw_line(base, base + Vector2(0.0, -58.0), Color("3b2a22"), 8.0)
+	draw_circle(base + Vector2(0.0, -68.0), 13.0, Color(1.0, 0.33, 0.08, 0.32))
+	draw_colored_polygon(PackedVector2Array([
+		base + Vector2(-8.0, -64.0), base + Vector2(0.0, -90.0),
+		base + Vector2(9.0, -64.0), base + Vector2(0.0, -55.0)
+	]), Color("ff7a2f"))
+	draw_circle(base + Vector2(0.0, -68.0), 5.0, Color("ffe29a"))
