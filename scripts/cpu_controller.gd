@@ -10,10 +10,21 @@ var decision_frames := 0
 var guard_frames := 0
 var attack_cooldown := 0
 var move_axis := 0.0
+var decision_buttons := {
+	"light": false,
+	"heavy": false,
+	"special": false,
+	"throw": false
+}
+var output_intent := {
+	"axis": Vector2.ZERO,
+	"buttons": {}
+}
 
 
 func _init() -> void:
 	rng.randomize()
+	output_intent.buttons = decision_buttons
 
 
 func reset() -> void:
@@ -24,7 +35,8 @@ func reset() -> void:
 
 
 func build_intent(cpu: Fighter, opponent: Fighter) -> Dictionary:
-	var buttons := _empty_buttons()
+	var buttons := decision_buttons
+	_reset_buttons()
 	attack_cooldown = maxi(0, attack_cooldown - 1)
 
 	var delta_x := opponent.position.x - cpu.position.x
@@ -135,14 +147,12 @@ func _opponent_is_threatening(opponent: Fighter, distance: float) -> bool:
 	return opponent.state_frame >= warning_frame and distance <= float(attack.range) + 62.0
 
 
-func _empty_buttons() -> Dictionary:
-	return {
-		"light": false,
-		"heavy": false,
-		"special": false,
-		"throw": false
-	}
+func _reset_buttons() -> void:
+	for button_name in decision_buttons:
+		decision_buttons[button_name] = false
 
 
 func _intent(axis: Vector2, buttons: Dictionary) -> Dictionary:
-	return {"axis": axis, "buttons": buttons}
+	output_intent.axis = axis
+	output_intent.buttons = buttons
+	return output_intent

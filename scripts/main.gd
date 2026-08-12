@@ -2,6 +2,7 @@ extends Node2D
 
 const FighterScene := preload("res://scripts/fighter.gd")
 const CpuControllerScript := preload("res://scripts/cpu_controller.gd")
+const ArenaBackgroundTexture := preload("res://assets/arena_background.svg")
 const SCREEN_SIZE := Vector2(1152.0, 648.0)
 const ROUND_SECONDS := 99
 const ROUNDS_TO_WIN := 2
@@ -34,16 +35,35 @@ var mode_label: Label
 var menu_layer: CanvasLayer
 var solo_button: Button
 var versus_button: Button
+var last_drawn_p1_health := -1
+var last_drawn_p2_health := -1
+var last_drawn_timer := -1
+var last_drawn_p1_wins := -1
+var last_drawn_p2_wins := -1
+var last_drawn_spark_count := -1
 
 
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(Color("071018"))
 	cpu_controller = CpuControllerScript.new() as CpuController
+	_create_arena_background()
 	_create_fighters()
 	_create_ui()
 	_create_mode_menu()
 	_show_mode_menu()
-	queue_redraw()
+	_request_hud_redraw()
+
+
+func _create_arena_background() -> void:
+	var background := Sprite2D.new()
+	background.name = "ArenaBackground"
+	background.texture = ArenaBackgroundTexture
+	background.centered = false
+	background.position = Vector2.ZERO
+	background.z_index = -100
+	background.show_behind_parent = true
+	background.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	add_child(background)
 
 
 func _create_fighters() -> void:
@@ -184,7 +204,7 @@ func _physics_process(_delta: float) -> void:
 	_handle_system_input()
 	if phase == &"menu":
 		_update_ui()
-		queue_redraw()
+		_request_hud_redraw()
 		return
 
 	fighters[0].capture_input()
@@ -201,7 +221,7 @@ func _physics_process(_delta: float) -> void:
 		global_hitstop -= 1
 		_update_effects()
 		_update_ui()
-		queue_redraw()
+		_request_hud_redraw()
 		return
 
 	if phase == &"intro":
@@ -230,7 +250,7 @@ func _physics_process(_delta: float) -> void:
 
 	_update_effects()
 	_update_ui()
-	queue_redraw()
+	_request_hud_redraw()
 
 
 func _handle_system_input() -> void:
@@ -478,29 +498,57 @@ func _update_effects() -> void:
 
 
 func _update_ui() -> void:
-	announcement_label.text = announcement
-	subtitle_label.text = announcement_sub
-	if game_mode == MODE_SOLO:
-		mode_label.text = "1 PLAYER  •  CPU STANDARD"
-		help_label.text = "P1 A/D move  W/S jump/crouch  F/G attack  H special  R throw  •  Air F/G  •  Back+R back throw  •  M menu"
-	else:
-		mode_label.text = "2 PLAYERS  •  LOCAL VERSUS"
-		help_label.text = "P1 A/D W/S F/G/H/R  •  P2 Arrows J/K/L/I  •  Air: light/heavy  •  Back+throw  •  M menu"
 	if phase == &"fight" and announcement_sub.ends_with("HIT COMBO"):
 		# The combo text is transient and clears when the defender recovers.
 		if fighters[0].combo_received == 0 and fighters[1].combo_received == 0:
 			announcement_sub = ""
+
+	_set_label_text_if_changed(announcement_label, announcement)
+	_set_label_text_if_changed(subtitle_label, announcement_sub)
+	if game_mode == MODE_SOLO:
+		_set_label_text_if_changed(mode_label, "1 PLAYER  •  CPU STANDARD")
+		_set_label_text_if_changed(help_label, "P1 A/D move  W/S jump/crouch  F/G attack  H special  R throw  •  Air F/G  •  Back+R back throw  •  M menu")
+	else:
+		_set_label_text_if_changed(mode_label, "2 PLAYERS  •  LOCAL VERSUS")
+		_set_label_text_if_changed(help_label, "P1 A/D W/S F/G/H/R  •  P2 Arrows J/K/L/I  •  Air: light/heavy  •  Back+throw  •  M menu")
 	if training_visible:
-		training_label.text = "FRAME DATA / HITBOX VIEW\nP1  %s\nP2  %s\nDistance: %.1f px    Enter: reset round" % [
+		var training_text := "FRAME DATA / HITBOX VIEW\nP1  %s\nP2  %s\nDistance: %.1f px    Enter: reset round" % [
 			fighters[0].frame_data_text(),
 			fighters[1].frame_data_text(),
 			absf(fighters[1].position.x - fighters[0].position.x)
 		]
+		_set_label_text_if_changed(training_label, training_text)
+
+
+func _set_label_text_if_changed(label: Label, next_text: String) -> void:
+	if label.text != next_text:
+		label.text = next_text
+
+
+func _request_hud_redraw() -> void:
+	var timer_seconds := ceili(float(round_frames) / 60.0)
+	var sparks_need_animation := not hit_sparks.is_empty()
+	var hud_changed: bool = (
+		last_drawn_p1_health != fighters[0].health
+		or last_drawn_p2_health != fighters[1].health
+		or last_drawn_timer != timer_seconds
+		or last_drawn_p1_wins != wins[0]
+		or last_drawn_p2_wins != wins[1]
+		or last_drawn_spark_count != hit_sparks.size()
+	)
+	if not hud_changed and not sparks_need_animation:
+		return
+
+	last_drawn_p1_health = fighters[0].health
+	last_drawn_p2_health = fighters[1].health
+	last_drawn_timer = timer_seconds
+	last_drawn_p1_wins = wins[0]
+	last_drawn_p2_wins = wins[1]
+	last_drawn_spark_count = hit_sparks.size()
+	queue_redraw()
 
 
 func _draw() -> void:
-	_draw_arena_background()
-
 	# Health and round HUD.
 	draw_rect(Rect2(48, 40, 450, 34), Color("101820"), true)
 	draw_rect(Rect2(654, 40, 450, 34), Color("101820"), true)
@@ -528,96 +576,3 @@ func _draw() -> void:
 			var angle := TAU * float(ray) / 8.0
 			draw_line(spark.position, spark.position + Vector2.from_angle(angle) * radius, spark_color, 4.0)
 		draw_circle(spark.position, radius * 0.28, spark_color)
-
-
-func _draw_arena_background() -> void:
-	# Sunset sky behind the open-air stone colosseum.
-	var sky_top := Color("101a32")
-	var sky_bottom := Color("72443b")
-	for band in 14:
-		var t := float(band) / 13.0
-		draw_rect(Rect2(0.0, float(band) * 12.0, SCREEN_SIZE.x, 13.0), sky_top.lerp(sky_bottom, t), true)
-	draw_circle(Vector2(930.0, 105.0), 48.0, Color(1.0, 0.72, 0.38, 0.28))
-	draw_circle(Vector2(930.0, 105.0), 34.0, Color("f4bd69"))
-
-	# Upper stone facade and cornices.
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(0, 138), Vector2(1152, 138), Vector2(1152, 382), Vector2(0, 382)
-	]), Color("75675c"))
-	draw_rect(Rect2(0, 130, 1152, 18), Color("b6a184"), true)
-	draw_rect(Rect2(0, 148, 1152, 8), Color("493f3b"), true)
-	draw_rect(Rect2(0, 306, 1152, 18), Color("a58e73"), true)
-	draw_rect(Rect2(0, 324, 1152, 8), Color("493f3b"), true)
-
-	# Two rows of arched entrances create the arena bowl.
-	for column in 12:
-		var arch_x := 48.0 + float(column) * 96.0
-		_draw_stone_arch(Vector2(arch_x, 172.0), 60.0, 116.0)
-	for column in 15:
-		var lower_arch_x := 32.0 + float(column) * 78.0
-		_draw_stone_arch(Vector2(lower_arch_x, 338.0), 48.0, 92.0)
-
-	# Hanging house banners and a central arena crest.
-	_draw_banner(Vector2(116.0, 154.0), Color("245e7a"), Color("8defff"))
-	_draw_banner(Vector2(984.0, 154.0), Color("8d3150"), Color("ffd5e2"))
-	draw_circle(Vector2(576.0, 232.0), 43.0, Color("463c36"))
-	draw_circle(Vector2(576.0, 232.0), 35.0, Color("c4a66e"), false, 6.0)
-	draw_string(ThemeDB.fallback_font, Vector2(541.0, 245.0), "FB", HORIZONTAL_ALIGNMENT_CENTER, 70.0, 28, Color("f7df9b"))
-
-	# Crowd terraces. Each spectator is deliberately tiny so fighters remain clear.
-	draw_rect(Rect2(0, 378, 1152, 84), Color("241f24"), true)
-	for tier in 4:
-		draw_line(Vector2(0, 385.0 + tier * 20.0), Vector2(1152, 385.0 + tier * 20.0), Color("61534b"), 3.0)
-		for spectator in 48:
-			var crowd_x := 8.0 + spectator * 24.0 + float(tier % 2) * 8.0
-			var crowd_y := 392.0 + tier * 18.0 + float((spectator + tier) % 3) * 2.0
-			var crowd_color := Color("d5ad77") if (spectator + tier) % 4 == 0 else Color("80706c")
-			draw_circle(Vector2(crowd_x, crowd_y), 3.2, crowd_color)
-
-	_draw_torch(Vector2(252.0, 432.0))
-	_draw_torch(Vector2(900.0, 432.0))
-
-	# Sand-and-stone fighting floor with strong perspective lines.
-	draw_rect(Rect2(0, 460, SCREEN_SIZE.x, 188), Color("6f5843"), true)
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(0, 460), Vector2(1152, 460), Vector2(1076, Fighter.GROUND_Y), Vector2(76, Fighter.GROUND_Y)
-	]), Color("9a7955"))
-	for strip in 7:
-		var strip_y := 468.0 + strip * 15.0
-		var inset := (strip_y - 460.0) * 0.42
-		draw_line(Vector2(inset, strip_y), Vector2(1152.0 - inset, strip_y), Color(0.35, 0.25, 0.18, 0.48), 1.0)
-	for x in range(int(Fighter.ARENA_LEFT), int(Fighter.ARENA_RIGHT) + 1, 50):
-		draw_line(Vector2(x, Fighter.GROUND_Y), Vector2(576.0 + (x - 576.0) * 1.34, 648.0), Color(0.32, 0.22, 0.15, 0.58), 1.0)
-	draw_line(Vector2(Fighter.ARENA_LEFT, Fighter.GROUND_Y), Vector2(Fighter.ARENA_RIGHT, Fighter.GROUND_Y), Color("f2ca7f"), 5.0)
-	draw_line(Vector2(Fighter.ARENA_LEFT, Fighter.GROUND_Y + 6.0), Vector2(Fighter.ARENA_RIGHT, Fighter.GROUND_Y + 6.0), Color("5e3928"), 2.0)
-
-
-func _draw_stone_arch(origin: Vector2, width: float, height: float) -> void:
-	var radius := width * 0.5
-	var arch_center := Vector2(origin.x, origin.y + radius)
-	var opening_color := Color("18191e")
-	draw_circle(arch_center, radius, opening_color)
-	draw_rect(Rect2(origin.x - radius, arch_center.y, width, height - radius), opening_color, true)
-	draw_arc(arch_center, radius + 5.0, PI, TAU, 24, Color("c2ad90"), 5.0)
-	draw_line(Vector2(origin.x - radius - 5.0, arch_center.y), Vector2(origin.x - radius - 5.0, origin.y + height), Color("b29c82"), 5.0)
-	draw_line(Vector2(origin.x + radius + 5.0, arch_center.y), Vector2(origin.x + radius + 5.0, origin.y + height), Color("554b45"), 5.0)
-
-
-func _draw_banner(origin: Vector2, banner_color: Color, emblem_color: Color) -> void:
-	draw_line(origin + Vector2(-6.0, 0.0), origin + Vector2(58.0, 0.0), Color("d7bd88"), 5.0)
-	draw_colored_polygon(PackedVector2Array([
-		origin, origin + Vector2(52.0, 0.0), origin + Vector2(52.0, 112.0),
-		origin + Vector2(26.0, 94.0), origin + Vector2(0.0, 112.0)
-	]), banner_color)
-	draw_circle(origin + Vector2(26.0, 45.0), 13.0, emblem_color, false, 4.0)
-	draw_line(origin + Vector2(13.0, 70.0), origin + Vector2(39.0, 70.0), emblem_color, 4.0)
-
-
-func _draw_torch(base: Vector2) -> void:
-	draw_line(base, base + Vector2(0.0, -58.0), Color("3b2a22"), 8.0)
-	draw_circle(base + Vector2(0.0, -68.0), 13.0, Color(1.0, 0.33, 0.08, 0.32))
-	draw_colored_polygon(PackedVector2Array([
-		base + Vector2(-8.0, -64.0), base + Vector2(0.0, -90.0),
-		base + Vector2(9.0, -64.0), base + Vector2(0.0, -55.0)
-	]), Color("ff7a2f"))
-	draw_circle(base + Vector2(0.0, -68.0), 5.0, Color("ffe29a"))
