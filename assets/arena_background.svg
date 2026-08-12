@@ -57,6 +57,42 @@
       <circle cx="64" cy="68" r="3.2" fill="#80706c"/>
       <circle cx="88" cy="68" r="3.2" fill="#d5ad77"/>
     </g>
+    <g id="spectator-blue">
+      <ellipse cx="0" cy="3" rx="12" ry="3" fill="#080a10" opacity="0.6"/>
+      <path d="M-7-11L-15-23L-18-31M7-11L15-23L18-31" fill="none" stroke="#287c9f" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="-18" cy="-33" r="3" fill="#e2b47f"/>
+      <circle cx="18" cy="-33" r="3" fill="#e2b47f"/>
+      <path d="M-9-13Q0-18 9-13L12 4H-12Z" fill="#287c9f" stroke="#11141c" stroke-width="1.5"/>
+      <circle cx="0" cy="-23" r="6" fill="#e2b47f" stroke="#11141c" stroke-width="1.5"/>
+      <path d="M-6-24Q-3-32 5-28L6-23Q1-27-6-24Z" fill="#34251f"/>
+    </g>
+    <g id="spectator-red">
+      <ellipse cx="0" cy="3" rx="12" ry="3" fill="#080a10" opacity="0.6"/>
+      <path d="M-8-11L-18-17L-24-14M8-11L17-21L20-29" fill="none" stroke="#a74358" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="-26" cy="-13" r="3" fill="#ba805c"/>
+      <circle cx="21" cy="-31" r="3" fill="#ba805c"/>
+      <path d="M-9-13Q0-18 9-13L12 4H-12Z" fill="#a74358" stroke="#11141c" stroke-width="1.5"/>
+      <circle cx="0" cy="-23" r="6" fill="#ba805c" stroke="#11141c" stroke-width="1.5"/>
+      <path d="M-6-25Q0-31 6-25V-22H4L2-26L0-22L-2-26L-4-22H-6Z" fill="#17151b"/>
+    </g>
+    <g id="spectator-gold">
+      <ellipse cx="0" cy="3" rx="12" ry="3" fill="#080a10" opacity="0.6"/>
+      <path d="M-8-11L-12-19L-4-23M8-11L12-19L4-23" fill="none" stroke="#b88738" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="-2" cy="-23" r="3" fill="#e8c49a"/>
+      <circle cx="2" cy="-23" r="3" fill="#e8c49a"/>
+      <path d="M-9-13Q0-18 9-13L12 4H-12Z" fill="#b88738" stroke="#11141c" stroke-width="1.5"/>
+      <circle cx="0" cy="-30" r="6" fill="#e8c49a" stroke="#11141c" stroke-width="1.5"/>
+      <path d="M-6-31Q-4-38 4-36L7-31Q1-34-6-31Z" fill="#6a3d27"/>
+    </g>
+    <g id="spectator-green">
+      <ellipse cx="0" cy="3" rx="12" ry="3" fill="#080a10" opacity="0.6"/>
+      <path d="M-7-11L-15-21L-13-29M7-11L15-21L13-29" fill="none" stroke="#447f6a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="-12" cy="-31" r="3" fill="#d09a6f"/>
+      <circle cx="12" cy="-31" r="3" fill="#d09a6f"/>
+      <path d="M-9-13Q0-18 9-13L12 4H-12Z" fill="#447f6a" stroke="#11141c" stroke-width="1.5"/>
+      <circle cx="0" cy="-23" r="6" fill="#d09a6f" stroke="#11141c" stroke-width="1.5"/>
+      <path d="M-6-24Q-2-32 6-25L5-22Q0-27-6-24Z" fill="#2a1c19"/>
+    </g>
   </defs>
 
   <rect width="1152" height="648" fill="#071018"/>
@@ -133,6 +169,86 @@
   <line x1="0" y1="405" x2="1152" y2="405" stroke="#61534b" stroke-width="3"/>
   <line x1="0" y1="425" x2="1152" y2="425" stroke="#61534b" stroke-width="3"/>
   <line x1="0" y1="445" x2="1152" y2="445" stroke="#61534b" stroke-width="3"/>
+  <g opacity="0.72">
+    <use xlink:href="#spectator-green" transform="translate(18 410) scale(.7)"/>
+    <use xlink:href="#spectator-gold" transform="translate(56 410) scale(.7)"/>
+    <use xlink:href="#spectator-red" transform="translate(94 410) scale(.7)"/>
+    <use xlink:href="#spectator-blue" transform="translate(132 410) scale(.7)"/>
+    <use xlink:href="#spectator-gold" transform="translate(170 410) scale(.7)"/>
+    <use xlink:href="#spectator-green" transform="translate(208 410) scale(.7)"/>
+    <use xlink:href="#spectator-blue" transform="translate(246 410) scale(.7)"/>
+    <use xlink:href="#spectator-red" transform="translate(284 410) scale(.7)"/>
+    <use xlink:href="#spectator-green" transform="translate(322 410) scale(.7)"/>
+    <use xlink:href="#spectator-gold" transform="translate(360 410) scale(.7)"/>
+    <use xlink:href="#spectator-red" transform="translate(398 410) scale(.7)"/>
+    <use xlink:href="#spectator-blue" transform="translate(436 410) scale(.7)"/>
+    <use xlink:href="#spectator-gold" transform="translate(474 410) scale(.7)"/>
+    <use xlink:href="#spectator-green" transform="translate(512 410) scale(.7)"/>
+    <use xlink:href="#spectator-blue" transform="translate(550 410) scale(.7)"/>
+    <use xlink:href="#spectator-red" transform="translate(588 410) scale(.7)"/>
+    <use xlink:href="#spectator-green" transform="translate(626 410) scale(.7)"/>
+    <use xlink:href="#spectator-gold" transform="translate(664 410) scale(.7)"/>
+    <use xlink:href="#spectator-red" transform="translate(702 410) scale(.7)"/>
+    <use xlink:href="#spectator-blue" transform="translate(740 410) scale(.7)"/>
+    <use xlink:href="#spectator-gold" transform="translate(778 410) scale(.7)"/>
+    <use xlink:href="#spectator-green" transform="translate(816 410) scale(.7)"/>
+    <use xlink:href="#spectator-blue" transform="translate(854 410) scale(.7)"/>
+    <use xlink:href="#spectator-red" transform="translate(892 410) scale(.7)"/>
+    <use xlink:href="#spectator-green" transform="translate(930 410) scale(.7)"/>
+    <use xlink:href="#spectator-gold" transform="translate(968 410) scale(.7)"/>
+    <use xlink:href="#spectator-red" transform="translate(1006 410) scale(.7)"/>
+    <use xlink:href="#spectator-blue" transform="translate(1044 410) scale(.7)"/>
+    <use xlink:href="#spectator-gold" transform="translate(1082 410) scale(.7)"/>
+    <use xlink:href="#spectator-green" transform="translate(1120 410) scale(.7)"/>
+  </g>
+  <g opacity="0.9">
+    <use xlink:href="#spectator-red" transform="translate(24 438) scale(.86)"/>
+    <use xlink:href="#spectator-blue" transform="translate(72 438) scale(.86)"/>
+    <use xlink:href="#spectator-gold" transform="translate(120 438) scale(.86)"/>
+    <use xlink:href="#spectator-green" transform="translate(168 438) scale(.86)"/>
+    <use xlink:href="#spectator-blue" transform="translate(216 438) scale(.86)"/>
+    <use xlink:href="#spectator-red" transform="translate(264 438) scale(.86)"/>
+    <use xlink:href="#spectator-green" transform="translate(312 438) scale(.86)"/>
+    <use xlink:href="#spectator-gold" transform="translate(360 438) scale(.86)"/>
+    <use xlink:href="#spectator-red" transform="translate(408 438) scale(.86)"/>
+    <use xlink:href="#spectator-blue" transform="translate(456 438) scale(.86)"/>
+    <use xlink:href="#spectator-gold" transform="translate(504 438) scale(.86)"/>
+    <use xlink:href="#spectator-green" transform="translate(552 438) scale(.86)"/>
+    <use xlink:href="#spectator-blue" transform="translate(600 438) scale(.86)"/>
+    <use xlink:href="#spectator-red" transform="translate(648 438) scale(.86)"/>
+    <use xlink:href="#spectator-green" transform="translate(696 438) scale(.86)"/>
+    <use xlink:href="#spectator-gold" transform="translate(744 438) scale(.86)"/>
+    <use xlink:href="#spectator-red" transform="translate(792 438) scale(.86)"/>
+    <use xlink:href="#spectator-blue" transform="translate(840 438) scale(.86)"/>
+    <use xlink:href="#spectator-gold" transform="translate(888 438) scale(.86)"/>
+    <use xlink:href="#spectator-green" transform="translate(936 438) scale(.86)"/>
+    <use xlink:href="#spectator-blue" transform="translate(984 438) scale(.86)"/>
+    <use xlink:href="#spectator-red" transform="translate(1032 438) scale(.86)"/>
+    <use xlink:href="#spectator-green" transform="translate(1080 438) scale(.86)"/>
+    <use xlink:href="#spectator-gold" transform="translate(1128 438) scale(.86)"/>
+  </g>
+  <g>
+    <use xlink:href="#spectator-blue" transform="translate(18 466)"/>
+    <use xlink:href="#spectator-gold" transform="translate(76 466)"/>
+    <use xlink:href="#spectator-green" transform="translate(134 466)"/>
+    <use xlink:href="#spectator-red" transform="translate(192 466)"/>
+    <use xlink:href="#spectator-gold" transform="translate(250 466)"/>
+    <use xlink:href="#spectator-blue" transform="translate(308 466)"/>
+    <use xlink:href="#spectator-red" transform="translate(366 466)"/>
+    <use xlink:href="#spectator-green" transform="translate(424 466)"/>
+    <use xlink:href="#spectator-blue" transform="translate(482 466)"/>
+    <use xlink:href="#spectator-gold" transform="translate(540 466)"/>
+    <use xlink:href="#spectator-green" transform="translate(598 466)"/>
+    <use xlink:href="#spectator-red" transform="translate(656 466)"/>
+    <use xlink:href="#spectator-gold" transform="translate(714 466)"/>
+    <use xlink:href="#spectator-blue" transform="translate(772 466)"/>
+    <use xlink:href="#spectator-red" transform="translate(830 466)"/>
+    <use xlink:href="#spectator-green" transform="translate(888 466)"/>
+    <use xlink:href="#spectator-blue" transform="translate(946 466)"/>
+    <use xlink:href="#spectator-gold" transform="translate(1004 466)"/>
+    <use xlink:href="#spectator-green" transform="translate(1062 466)"/>
+    <use xlink:href="#spectator-red" transform="translate(1120 466)"/>
+  </g>
   <use xlink:href="#torch" transform="translate(252 432)"/>
   <use xlink:href="#torch" transform="translate(900 432)"/>
 

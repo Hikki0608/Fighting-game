@@ -112,7 +112,6 @@ var meta_key_state := {}
 
 var announcement_label: Label
 var subtitle_label: Label
-var help_label: Label
 var training_label: Label
 var mode_label: Label
 var menu_layer: CanvasLayer
@@ -221,15 +220,6 @@ func _create_ui() -> void:
 	subtitle_label.add_theme_font_size_override("font_size", 20)
 	subtitle_label.add_theme_color_override("font_color", Color("cae7f2"))
 	add_child(subtitle_label)
-
-	help_label = Label.new()
-	help_label.position = Vector2(24.0, 600.0)
-	help_label.size = Vector2(1104.0, 32.0)
-	help_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	help_label.add_theme_font_size_override("font_size", 15)
-	help_label.add_theme_color_override("font_color", Color("91acb7"))
-	help_label.text = "P1  A/D move  W jump  S crouch  F light  G heavy  H special  R throw"
-	add_child(help_label)
 
 	mode_label = Label.new()
 	mode_label.position = Vector2(426.0, 8.0)
@@ -455,7 +445,6 @@ func _show_mode_menu() -> void:
 	training_label.visible = false
 	announcement_label.visible = false
 	subtitle_label.visible = false
-	help_label.visible = false
 	mode_label.visible = false
 	menu_layer.visible = true
 	mode_selection = 0
@@ -486,7 +475,6 @@ func _start_match(selected_mode: StringName) -> void:
 	menu_layer.visible = false
 	announcement_label.visible = true
 	subtitle_label.visible = true
-	help_label.visible = true
 	mode_label.visible = true
 	for fighter in fighters:
 		fighter.visible = true
@@ -649,10 +637,8 @@ func _update_ui() -> void:
 	_set_label_text_if_changed(subtitle_label, announcement_sub)
 	if game_mode == MODE_SOLO:
 		_set_label_text_if_changed(mode_label, "1 PLAYER  •  CPU STANDARD")
-		_set_label_text_if_changed(help_label, "P1 A/D move  W/S jump/crouch  F/G attack  H special  R throw  •  Air F/G  •  Back+R back throw  •  M menu  •  Alt+Enter fullscreen")
 	else:
 		_set_label_text_if_changed(mode_label, "2 PLAYERS  •  LOCAL VERSUS")
-		_set_label_text_if_changed(help_label, "P1 A/D W/S F/G/H/R  •  P2 Arrows J/K/L/I  •  Air: light/heavy  •  Back+throw  •  M menu  •  Alt+Enter fullscreen")
 	if training_visible:
 		var training_text := "FRAME DATA / HITBOX VIEW\nP1  %s\nP2  %s\nDistance: %.1f px    Enter: reset round" % [
 			fighters[0].frame_data_text(),
