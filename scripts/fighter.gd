@@ -13,6 +13,7 @@ const CROUCH_HEIGHT := 82.0
 const VISUAL_SIZE := 176.0
 const MAX_METER := 100
 const INPUT_BUFFER_FRAMES := 7
+const AMBIENT_MOTION_SAMPLE_FRAMES := 2
 
 const ATTACKS := {
 	&"light": {
@@ -213,6 +214,8 @@ var last_hit_result := ""
 var block_stance_crouching := false
 var throw_backwards := false
 var air_attack_used := false
+var motion_tick := 0
+var landing_frames := 0
 var last_visual_state: StringName = &""
 var last_visual_frame := -1
 var last_visual_facing := 0
@@ -289,6 +292,8 @@ func reset_for_round(spawn_position: Vector2) -> void:
 	block_stance_crouching = false
 	throw_backwards = false
 	air_attack_used = false
+	motion_tick = 0
+	landing_frames = 0
 	previous_buttons = {
 		"light": false,
 		"heavy": false,
@@ -399,6 +404,8 @@ func _tick_input_buffer() -> void:
 
 
 func simulate(opponent: Fighter, accepting_input: bool) -> void:
+	motion_tick = (motion_tick + 1) % 3600
+	landing_frames = maxi(0, landing_frames - 1)
 	if state == &"hitstun" or state == &"blockstun":
 		_step_stun()
 	elif state == &"knockdown":
@@ -636,11 +643,14 @@ func _step_knockdown() -> void:
 
 
 func _apply_physics() -> void:
+	var was_airborne := position.y < GROUND_Y - 0.1 or velocity.y < 0.0
 	if not is_on_ground() or velocity.y < 0.0:
 		velocity.y += GRAVITY / 60.0
 	position += velocity / 60.0
 	position.x = clampf(position.x, ARENA_LEFT + BODY_WIDTH * 0.5, ARENA_RIGHT - BODY_WIDTH * 0.5)
 	if position.y >= GROUND_Y:
+		if was_airborne and velocity.y > 0.0:
+			landing_frames = 8
 		position.y = GROUND_Y
 		velocity.y = 0.0
 		if state == &"jump" or is_air_attack():
@@ -847,7 +857,15 @@ func _invalidate_visual_cache() -> void:
 
 
 func _queue_visual_redraw_if_needed() -> void:
-	var animated_frame := state_frame if is_attacking() or state == &"vel_shadow" else 0
+	var uses_gameplay_frames := (
+		is_attacking()
+		or state == &"vel_shadow"
+		or state == &"hitstun"
+		or state == &"blockstun"
+		or state == &"knockdown"
+	)
+	var ambient_frame := floori(float(motion_tick) / float(AMBIENT_MOTION_SAMPLE_FRAMES))
+	var animated_frame := state_frame if uses_gameplay_frames else ambient_frame
 	var height_step := roundi(position.y) if not is_on_ground() else roundi(GROUND_Y)
 	var attack_active := debug_boxes and is_attack_active()
 	var visual_changed := (
@@ -928,6 +946,310 @@ func frame_data_text() -> String:
 	return "%s  frame:%02d" % [str(state).to_upper(), state_frame]
 
 
+func _smooth_motion(value: float) -> float:
+	var clamped := clampf(value, 0.0, 1.0)
+	return clamped * clamped * (3.0 - 2.0 * clamped)
+
+
+func _attack_motion_factors() -> Dictionary:
+	var data: Dictionary = ATTACKS[state]
+	var startup := maxf(1.0, float(data.startup))
+	var active := maxf(1.0, float(data.active))
+	var recovery := maxf(1.0, float(data.recovery))
+	var frame := float(state_frame)
+	var active_end := startup + active
+	var windup := 0.0
+	var extension := 0.0
+	var active_progress := 0.0
+	var recovery_progress := 0.0
+
+	if frame <= startup:
+		windup = _smooth_motion(frame / startup)
+	elif frame <= active_end:
+		extension = 1.0
+		active_progress = clampf((frame - startup) / active, 0.0, 1.0)
+	else:
+		recovery_progress = clampf((frame - active_end) / recovery, 0.0, 1.0)
+		extension = 1.0 - _smooth_motion(recovery_progress)
+
+	return {
+		"windup": windup,
+		"extension": extension,
+		"active": active_progress,
+		"recovery": recovery_progress
+	}
+
+
+func _visual_pose() -> Dictionary:
+	var visual_offset := Vector2.ZERO
+	var visual_rotation := 0.0
+	var visual_scale := Vector2(float(facing), 1.0)
+	var visual_modulate := Color.WHITE
+	var breath := sin(float(motion_tick) * 0.055 + float(player_id) * 0.7)
+
+	if is_attacking():
+		var motion := _attack_motion_factors()
+		var windup: float = motion.windup
+		var extension: float = motion.extension
+		var active_progress: float = motion.active
+		var rapid := sin(float(state_frame) * 1.55)
+		match state:
+			&"light":
+				visual_offset = Vector2(facing * (-4.0 * windup + 15.0 * extension), -2.0 * extension)
+				visual_rotation = facing * (0.055 * windup - 0.105 * extension)
+				visual_scale *= Vector2(1.0 + 0.055 * extension, 1.0 - 0.035 * extension)
+			&"crouch_light":
+				visual_offset = Vector2(facing * (-2.0 * windup + 13.0 * extension), 3.0)
+				visual_rotation = facing * (0.035 * windup - 0.09 * extension)
+				visual_scale *= Vector2(1.06 + 0.04 * extension, 0.76 - 0.025 * extension)
+			&"heavy":
+				visual_offset = Vector2(facing * (-10.0 * windup + 21.0 * extension), 3.0 * windup - 5.0 * extension)
+				visual_rotation = facing * (0.12 * windup - 0.205 * extension)
+				visual_scale *= Vector2(1.0 + 0.09 * extension, 1.0 - 0.055 * extension)
+			&"forward_heavy":
+				visual_offset = Vector2(facing * (-13.0 * windup + 24.0 * extension), -8.0 * windup + 4.0 * extension)
+				visual_rotation = facing * (0.16 * windup - 0.255 * extension)
+				visual_scale *= Vector2(1.0 + 0.11 * extension, 1.0 - 0.07 * extension)
+			&"crouch_heavy":
+				visual_offset = Vector2(facing * (-5.0 * windup + 15.0 * extension), 4.0 * windup - 14.0 * extension)
+				visual_rotation = facing * (0.09 * windup - 0.18 * extension)
+				visual_scale *= Vector2(1.07 - 0.03 * extension, 0.76 + 0.33 * extension)
+			&"throw":
+				var grab_direction := -1.0 if throw_backwards else 1.0
+				visual_offset = Vector2(facing * grab_direction * (-5.0 * windup + 18.0 * extension), -3.0 * extension)
+				visual_rotation = facing * grab_direction * (0.08 * windup - 0.17 * extension)
+				visual_scale *= Vector2(1.0 + 0.08 * extension, 1.0 - 0.04 * extension)
+			&"jump_light":
+				visual_offset = Vector2(facing * (-3.0 * windup + 16.0 * extension), -3.0 * extension)
+				visual_rotation = facing * (0.08 * windup - 0.19 * extension)
+				visual_scale *= Vector2(1.0 + 0.07 * extension, 1.0 - 0.05 * extension)
+			&"jump_heavy":
+				visual_offset = Vector2(facing * (-6.0 * windup + 18.0 * extension), 4.0 * extension)
+				visual_rotation = facing * (-0.1 * windup + 0.38 * extension)
+				visual_scale *= Vector2(1.08 + 0.03 * extension, 0.94 - 0.05 * extension)
+			&"ren_pulse":
+				visual_offset = Vector2(facing * (-9.0 * windup + 7.0 * extension), 2.0 * windup)
+				visual_rotation = facing * (0.09 * windup - 0.065 * extension)
+				visual_scale *= Vector2(1.0 - 0.045 * windup + 0.055 * extension, 1.0 - 0.06 * windup)
+				visual_modulate = Color(0.82, 0.97, 1.0, 1.0)
+			&"ren_palm":
+				visual_offset = Vector2(facing * (-12.0 * windup + 25.0 * extension), 4.0 * windup - 4.0 * extension)
+				visual_rotation = facing * (0.13 * windup - 0.24 * extension)
+				visual_scale *= Vector2(1.0 + 0.14 * extension, 1.0 - 0.09 * extension)
+				visual_modulate = Color(0.86, 0.98, 1.0, 1.0)
+			&"ren_rise":
+				visual_offset = Vector2(facing * (-5.0 * windup + 11.0 * extension), 5.0 * windup - 17.0 * extension)
+				visual_rotation = facing * (0.11 * windup - 0.29 * extension)
+				visual_scale *= Vector2(1.05 - 0.08 * extension, 0.92 + 0.22 * extension)
+				visual_modulate = Color(0.8, 0.97, 1.0, 1.0)
+			&"ren_dive":
+				visual_offset = Vector2(facing * (-5.0 * windup + 20.0 * extension), -4.0 * windup + 8.0 * extension)
+				visual_rotation = facing * (0.1 * windup + 0.43 * extension)
+				visual_scale *= Vector2(1.0 + 0.12 * extension, 1.0 - 0.12 * extension)
+				visual_modulate = Color(0.82, 0.96, 1.0, 1.0)
+			&"ren_super":
+				var combo_sway := rapid * extension * (0.35 + active_progress)
+				visual_offset = Vector2(facing * (-15.0 * windup + 28.0 * extension + combo_sway * 6.0), -5.0 * extension + absf(combo_sway) * 3.0)
+				visual_rotation = facing * (0.18 * windup - 0.24 * extension + combo_sway * 0.08)
+				visual_scale *= Vector2(1.0 + 0.16 * extension, 1.0 - 0.1 * extension)
+				visual_modulate = Color(0.72, 0.95, 1.0, 1.0)
+			&"vel_rake":
+				var claw_sway := rapid * extension
+				visual_offset = Vector2(facing * (-8.0 * windup + 20.0 * extension + claw_sway * 4.0), -2.0 * extension + claw_sway * 2.0)
+				visual_rotation = facing * (0.13 * windup - 0.19 * extension + claw_sway * 0.1)
+				visual_scale *= Vector2(1.0 + 0.11 * extension, 1.0 - 0.07 * extension)
+				visual_modulate = Color(1.0, 0.8, 0.84, 1.0)
+			&"vel_pounce":
+				visual_offset = Vector2(facing * (-14.0 * windup + 25.0 * extension), 9.0 * windup - 8.0 * extension)
+				visual_rotation = facing * (0.17 * windup - 0.34 * extension)
+				visual_scale *= Vector2(1.08 + 0.12 * extension, 0.86 + 0.04 * extension)
+				visual_modulate = Color(1.0, 0.84, 0.87, 1.0)
+			&"vel_rise":
+				visual_offset = Vector2(facing * (-7.0 * windup + 14.0 * extension), 7.0 * windup - 19.0 * extension)
+				visual_rotation = facing * (0.15 * windup - 0.39 * extension)
+				visual_scale *= Vector2(1.08 - 0.09 * extension, 0.9 + 0.25 * extension)
+				visual_modulate = Color(1.0, 0.78, 0.83, 1.0)
+			&"vel_dive":
+				visual_offset = Vector2(facing * (-7.0 * windup + 23.0 * extension), -4.0 * windup + 9.0 * extension)
+				visual_rotation = facing * (0.14 * windup + 0.52 * extension)
+				visual_scale *= Vector2(1.0 + 0.16 * extension, 1.0 - 0.15 * extension)
+				visual_modulate = Color(1.0, 0.76, 0.82, 1.0)
+			&"vel_super":
+				visual_offset = Vector2(facing * (-18.0 * windup + 34.0 * extension), 8.0 * windup - 7.0 * extension)
+				visual_rotation = facing * (0.21 * windup - 0.38 * extension + rapid * extension * 0.045)
+				visual_scale *= Vector2(1.0 + 0.2 * extension, 1.0 - 0.13 * extension)
+				visual_modulate = Color(1.0, 0.62, 0.7, 1.0)
+	else:
+		match state:
+			&"idle":
+				visual_offset.y = breath * 1.8
+				visual_rotation = facing * sin(float(motion_tick) * 0.031) * 0.009
+				visual_scale *= Vector2(1.0 - breath * 0.008, 1.0 + breath * 0.012)
+			&"walk":
+				var step_cycle := sin(float(motion_tick) * 0.39)
+				var forward_motion := signf(velocity.x) * float(facing)
+				visual_offset = Vector2(facing * step_cycle * 1.8, -absf(step_cycle) * 4.5)
+				visual_rotation = facing * (-0.035 * forward_motion + step_cycle * 0.018)
+				visual_scale *= Vector2(1.0 + absf(step_cycle) * 0.018, 1.0 - absf(step_cycle) * 0.025)
+			&"crouch":
+				visual_offset = Vector2(0.0, 3.0 + breath * 0.7)
+				visual_rotation = facing * breath * 0.006
+				visual_scale *= Vector2(1.06 - breath * 0.006, 0.76 + breath * 0.008)
+			&"jump":
+				var vertical_speed := clampf(velocity.y / JUMP_SPEED, -1.0, 1.0)
+				var apex_tuck := 1.0 - clampf(absf(velocity.y) / absf(JUMP_SPEED), 0.0, 1.0)
+				visual_offset = Vector2(facing * vertical_speed * 2.0, -apex_tuck * 5.0)
+				visual_rotation = facing * (-0.075 - vertical_speed * 0.055)
+				visual_scale *= Vector2(0.96 + apex_tuck * 0.08, 1.07 - apex_tuck * 0.13)
+			&"vel_shadow":
+				if state_frame <= 7:
+					var retreat_t := _smooth_motion(float(state_frame) / 7.0)
+					visual_offset = Vector2(-facing * (4.0 + retreat_t * 10.0), -retreat_t * 3.0)
+					visual_rotation = facing * (0.05 + retreat_t * 0.13)
+					visual_scale *= Vector2(1.0 + retreat_t * 0.08, 1.0 - retreat_t * 0.07)
+				elif state_frame <= 10:
+					visual_offset = Vector2(-facing * 5.0, 5.0)
+					visual_rotation = facing * 0.08
+					visual_scale *= Vector2(1.09, 0.87)
+				else:
+					var dash_t := _smooth_motion(float(state_frame - 10) / 16.0)
+					visual_offset = Vector2(facing * (10.0 + dash_t * 11.0), -5.0)
+					visual_rotation = -facing * (0.14 + dash_t * 0.06)
+					visual_scale *= Vector2(1.13, 0.9)
+				visual_modulate = Color(0.82, 0.68, 0.94, 0.88)
+			&"hitstun":
+				var hit_decay := 1.0 - clampf(float(state_frame) / 32.0, 0.0, 1.0)
+				var hit_shake := sin(float(state_frame) * 2.45) * hit_decay
+				visual_offset = Vector2(-facing * (9.0 + absf(hit_shake) * 4.0), hit_shake * 3.0)
+				visual_rotation = facing * (0.13 + hit_shake * 0.035)
+				visual_scale *= Vector2(0.95, 1.04)
+				visual_modulate = Color(1.0, 0.58, 0.58, 1.0)
+			&"blockstun":
+				var guard_shake := sin(float(state_frame) * 2.1) * (1.0 - clampf(float(state_frame) / 24.0, 0.0, 1.0))
+				visual_offset = Vector2(-facing * (6.0 + absf(guard_shake) * 2.5), guard_shake * 1.5)
+				visual_rotation = facing * (0.07 + guard_shake * 0.018)
+				visual_scale *= Vector2(1.04, 0.78 if block_stance_crouching else 0.96)
+				visual_modulate = Color(0.72, 0.94, 1.0, 1.0)
+			&"knockdown":
+				if state_frame <= 14:
+					var fall_t := _smooth_motion(float(state_frame) / 14.0)
+					visual_offset = Vector2(-facing * 42.0 * fall_t, -8.0 * fall_t)
+					visual_rotation = -facing * 1.25 * fall_t
+					visual_scale *= Vector2(1.0 - fall_t * 0.14, 1.0 - fall_t * 0.1)
+				elif state_frame <= 35:
+					visual_offset = Vector2(-42.0 * facing, -8.0 + sin(float(state_frame) * 0.65) * 1.2)
+					visual_rotation = -1.25 * facing
+					visual_scale *= 0.86
+				else:
+					var rise_t := _smooth_motion(float(state_frame - 35) / 13.0)
+					visual_offset = Vector2(-42.0 * facing * (1.0 - rise_t), -8.0 * (1.0 - rise_t))
+					visual_rotation = -1.25 * facing * (1.0 - rise_t)
+					visual_scale *= Vector2(0.86 + rise_t * 0.14, 0.86 + rise_t * 0.14)
+
+	if landing_frames > 0 and (state == &"idle" or state == &"walk" or state == &"crouch"):
+		var landing_strength := float(landing_frames) / 8.0
+		visual_offset.y += landing_strength * 4.0
+		visual_scale *= Vector2(1.0 + landing_strength * 0.09, 1.0 - landing_strength * 0.11)
+
+	return {
+		"offset": visual_offset,
+		"rotation": visual_rotation,
+		"scale": visual_scale,
+		"modulate": visual_modulate
+	}
+
+
+func _draw_motion_accents() -> void:
+	if landing_frames > 0:
+		var landing_strength := float(landing_frames) / 8.0
+		var dust_color := Color(Color("d8c79d"), landing_strength * 0.42)
+		for side in [-1.0, 1.0]:
+			var dust_center := Vector2(side * (21.0 + 13.0 * (1.0 - landing_strength)), -3.0)
+			draw_arc(dust_center, 7.0 + 8.0 * (1.0 - landing_strength), PI, TAU, 12, dust_color, 3.0, true)
+
+	if state == &"walk":
+		var step_cycle := sin(float(motion_tick) * 0.39)
+		var footfall := clampf((absf(step_cycle) - 0.78) / 0.22, 0.0, 1.0)
+		if footfall > 0.0:
+			var foot_x := -18.0 if step_cycle > 0.0 else 18.0
+			var walk_dust := Color(Color("c8b98f"), footfall * 0.2)
+			draw_circle(Vector2(foot_x, -2.0), 3.0 + footfall * 3.0, walk_dust)
+
+	if state == &"jump" and absf(velocity.y) > 260.0:
+		var streak_alpha := clampf((absf(velocity.y) - 260.0) / 650.0, 0.0, 0.22)
+		var streak_direction := -signf(velocity.y)
+		for streak in 3:
+			var streak_x := -24.0 + float(streak) * 24.0
+			var streak_start := Vector2(streak_x, -24.0 + streak_direction * 8.0)
+			var streak_end := streak_start + Vector2(0.0, streak_direction * 20.0)
+			draw_line(streak_start, streak_end, Color(accent_color, streak_alpha), 2.0, true)
+
+	if state == &"hitstun" and state_frame <= 8:
+		var impact_alpha := 0.32 * (1.0 - float(state_frame) / 9.0)
+		for mark in 3:
+			var mark_y := -104.0 + float(mark) * 30.0
+			draw_line(
+				Vector2(facing * 15.0, mark_y),
+				Vector2(facing * 34.0, mark_y - 7.0),
+				Color(Color("fff0bd"), impact_alpha),
+				3.0,
+				true
+			)
+
+
+func _draw_motion_echoes(
+	visual_offset: Vector2,
+	visual_rotation: float,
+	visual_scale: Vector2
+) -> void:
+	if character_texture == null:
+		return
+
+	var echo_alpha := 0.0
+	var echo_count := 2
+	match state:
+		&"heavy", &"forward_heavy", &"jump_heavy":
+			echo_alpha = 0.075
+		&"ren_palm", &"ren_rise", &"ren_dive":
+			echo_alpha = 0.13
+		&"vel_rake", &"vel_pounce", &"vel_rise", &"vel_dive":
+			echo_alpha = 0.14
+		&"vel_shadow":
+			echo_alpha = 0.17
+		&"ren_super", &"vel_super":
+			echo_alpha = 0.2
+			echo_count = 3
+		_:
+			return
+
+	if is_attacking():
+		var data: Dictionary = ATTACKS[state]
+		var startup := maxf(1.0, float(data.startup))
+		var visible_strength := clampf(float(state_frame) / startup, 0.2, 1.0)
+		echo_alpha *= visible_strength
+
+	var trail_direction := Vector2(-float(facing), 0.0)
+	if velocity.length() > 90.0:
+		trail_direction = -velocity.normalized()
+	if state == &"vel_shadow" and state_frame <= 10:
+		trail_direction = Vector2(float(facing), 0.0)
+
+	var echo_color := body_color.lightened(0.32)
+	for echo_index in range(echo_count, 0, -1):
+		var distance := 11.0 * float(echo_index)
+		var echo_offset := visual_offset + trail_direction * distance
+		var echo_scale := visual_scale * Vector2(1.0 + 0.012 * echo_index, 1.0 - 0.012 * echo_index)
+		var alpha := echo_alpha * (1.0 - float(echo_index - 1) / float(echo_count + 1))
+		draw_set_transform(echo_offset, visual_rotation, echo_scale)
+		draw_texture_rect(
+			character_texture,
+			Rect2(-VISUAL_SIZE * 0.5, -VISUAL_SIZE, VISUAL_SIZE, VISUAL_SIZE),
+			false,
+			Color(echo_color, alpha)
+		)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
 func _draw() -> void:
 	# The shadow stays on the arena floor while the fighter jumps.
 	var shadow_y := GROUND_Y - position.y - 2.0
@@ -936,86 +1258,19 @@ func _draw() -> void:
 	draw_circle(Vector2.ZERO, 30.0, Color(0.0, 0.0, 0.0, 0.28))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-	var visual_offset := Vector2.ZERO
-	var visual_rotation := 0.0
-	var visual_scale := Vector2(float(facing), 1.0)
-	var visual_modulate := Color.WHITE
-	match state:
-		&"crouch":
-			visual_scale.y = 0.76
-		&"crouch_light":
-			visual_scale.y = 0.76
-			visual_offset.x = 5.0 * facing
-			visual_rotation = -0.025 * facing
-		&"crouch_heavy":
-			visual_scale.y = 0.76
-			visual_offset.x = 9.0 * facing
-			visual_rotation = -0.07 * facing
-		&"jump":
-			visual_rotation = -0.035 * facing
-		&"light":
-			visual_offset.x = 5.0 * facing
-			visual_rotation = -0.025 * facing
-		&"heavy", &"forward_heavy":
-			visual_offset.x = 9.0 * facing
-			visual_rotation = -0.07 * facing
-		&"ren_pulse":
-			visual_offset.x = -3.0 * facing
-			visual_rotation = 0.035 * facing
-		&"ren_palm":
-			visual_offset.x = 13.0 * facing
-			visual_rotation = -0.09 * facing
-		&"ren_rise", &"vel_rise":
-			visual_offset.x = 6.0 * facing
-			visual_rotation = -0.16 * facing
-		&"ren_dive", &"vel_dive":
-			visual_offset.x = 10.0 * facing
-			visual_rotation = 0.32 * facing
-		&"ren_super":
-			visual_offset.x = 15.0 * facing
-			visual_rotation = -0.13 * facing
-			visual_modulate = Color(0.75, 0.96, 1.0, 1.0)
-		&"vel_rake":
-			visual_offset.x = 12.0 * facing
-			visual_rotation = -0.12 * facing
-		&"vel_pounce":
-			visual_offset.x = 9.0 * facing
-			visual_rotation = -0.22 * facing
-		&"vel_shadow":
-			visual_offset.x = -5.0 * facing if state_frame <= 9 else 11.0 * facing
-			visual_rotation = 0.08 * facing if state_frame <= 9 else -0.12 * facing
-			visual_modulate = Color(0.82, 0.70, 0.92, 0.88)
-		&"vel_super":
-			visual_offset.x = 16.0 * facing
-			visual_rotation = -0.16 * facing
-			visual_modulate = Color(1.0, 0.66, 0.72, 1.0)
-		&"throw":
-			visual_offset.x = (-7.0 if throw_backwards else 8.0) * facing
-			visual_rotation = (0.06 if throw_backwards else -0.05) * facing
-		&"jump_light":
-			visual_offset.x = 6.0 * facing
-			visual_rotation = -0.11 * facing
-		&"jump_heavy":
-			visual_offset.x = 8.0 * facing
-			visual_rotation = 0.13 * facing
-		&"hitstun":
-			visual_offset.x = -7.0 * facing
-			visual_rotation = 0.1 * facing
-			visual_modulate = Color(1.0, 0.62, 0.62, 1.0)
-		&"blockstun":
-			visual_offset.x = -5.0 * facing
-			visual_rotation = 0.055 * facing
-			visual_modulate = Color(0.76, 0.95, 1.0, 1.0)
-		&"knockdown":
-			visual_offset = Vector2(-42.0 * facing, -8.0)
-			visual_rotation = -1.25 * facing
-			visual_scale *= 0.86
+	_draw_motion_accents()
+	var pose := _visual_pose()
+	var visual_offset: Vector2 = pose.offset
+	var visual_rotation: float = pose.rotation
+	var visual_scale: Vector2 = pose.scale
+	var visual_modulate: Color = pose.modulate
 
 	if meter >= MAX_METER:
 		var aura_color := Color("74e8ff") if character_id == &"ren" else Color("ff557d")
 		draw_arc(Vector2(0.0, -88.0), 62.0, -2.7, -0.35, 24, Color(aura_color, 0.42), 3.0, true)
 		draw_arc(Vector2(0.0, -88.0), 69.0, 0.35, 2.7, 24, Color(aura_color, 0.28), 2.0, true)
 
+	_draw_motion_echoes(visual_offset, visual_rotation, visual_scale)
 	draw_set_transform(visual_offset, visual_rotation, visual_scale)
 	if character_texture != null:
 		draw_texture_rect(
