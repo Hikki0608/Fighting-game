@@ -13,6 +13,11 @@ const CROUCH_HEIGHT := 82.0
 const VISUAL_SIZE := 176.0
 const SPRITE_SHEET_CELL_SIZE := 256.0
 const SPRITE_DRAW_OFFSET_Y := 8.0
+const REN_ANIMATION_BASIC := 0
+const REN_ANIMATION_GROUND := 1
+const REN_ANIMATION_AIR_SPECIAL := 2
+const REN_ANIMATION_SPECIAL := 3
+const REN_ANIMATION_REACTION := 4
 const MAX_METER := 100
 const INPUT_BUFFER_FRAMES := 7
 const AMBIENT_MOTION_SAMPLE_FRAMES := 2
@@ -176,7 +181,7 @@ var fighter_name := "PLAYER 1"
 var body_color := Color("4ed8ff")
 var accent_color := Color("e9fbff")
 var character_texture: Texture2D
-var character_animation_texture: Texture2D
+var character_animation_textures: Array[Texture2D] = []
 var health := 1000
 var meter := 0
 var facing := 1
@@ -235,7 +240,7 @@ func setup(
 	color: Color,
 	spawn_position: Vector2,
 	texture: Texture2D = null,
-	animation_texture: Texture2D = null
+	animation_sources: Variant = null
 ) -> void:
 	player_id = id
 	configure_character(
@@ -243,7 +248,7 @@ func setup(
 		display_name,
 		color,
 		texture,
-		animation_texture
+		animation_sources
 	)
 	position = spawn_position
 	facing = 1 if player_id == 0 else -1
@@ -255,14 +260,20 @@ func configure_character(
 	display_name: String,
 	color: Color,
 	texture: Texture2D,
-	animation_texture: Texture2D = null
+	animation_sources: Variant = null
 ) -> void:
 	character_id = selected_character_id
 	fighter_name = display_name
 	body_color = color
 	accent_color = color.lightened(0.55)
 	character_texture = texture
-	character_animation_texture = animation_texture
+	character_animation_textures.clear()
+	if animation_sources is Texture2D:
+		character_animation_textures.append(animation_sources as Texture2D)
+	elif animation_sources is Array:
+		for animation_texture in animation_sources:
+			if animation_texture is Texture2D:
+				character_animation_textures.append(animation_texture as Texture2D)
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	_invalidate_visual_cache()
 	queue_redraw()
@@ -1007,51 +1018,151 @@ func _basic_attack_sprite_frame() -> int:
 	return 3 if recovery_progress < 0.55 else 4
 
 
-func _animated_sprite_cell() -> Vector2i:
-	if character_animation_texture == null:
-		return Vector2i(-1, -1)
+func _animation_frame(sheet_index: int, column: int, row: int) -> Vector3i:
+	if sheet_index < 0 or sheet_index >= character_animation_textures.size():
+		return Vector3i(-1, -1, -1)
+	return Vector3i(sheet_index, column, row)
+
+
+func _stun_sprite_frame(default_duration: int, result_prefix: String) -> int:
+	var duration := default_duration
+	if last_hit_result.begins_with(result_prefix):
+		duration = int(last_hit_result.get_slice(":", 1))
+	var progress := float(state_frame) / float(maxi(1, duration))
+	return clampi(floori(progress * 5.0), 0, 4)
+
+
+func _knockdown_sprite_frame() -> int:
+	if state_frame <= 5:
+		return 0
+	if state_frame <= 14:
+		return 1
+	if state_frame <= 35:
+		return 2
+	if state_frame <= 42:
+		return 3
+	return 4
+
+
+func _ren_super_sprite_frame() -> int:
+	var frame_thresholds := [0, 3, 6, 8, 12, 16, 20, 23, 26, 31, 35, 39, 43, 47]
+	for sprite_frame in frame_thresholds.size():
+		if state_frame <= int(frame_thresholds[sprite_frame]):
+			return sprite_frame
+	return 14
+
+
+func _animated_sprite_frame() -> Vector3i:
+	if character_animation_textures.is_empty():
+		return Vector3i(-1, -1, -1)
 
 	match state:
 		&"idle":
 			if landing_frames > 0:
-				return Vector2i(4, 2)
-			return Vector2i(floori(float(motion_tick) / 10.0) % 5, 0)
+				var landing_frame := clampi(
+					floori(float(8 - landing_frames) * 5.0 / 8.0),
+					0,
+					4
+				)
+				return _animation_frame(REN_ANIMATION_REACTION, landing_frame, 4)
+			return _animation_frame(
+				REN_ANIMATION_BASIC,
+				floori(float(motion_tick) / 10.0) % 5,
+				0
+			)
 		&"walk":
 			var walk_frame := floori(float(motion_tick) / 5.0) % 5
 			if velocity.x * float(facing) < 0.0:
 				walk_frame = 4 - walk_frame
-			return Vector2i(walk_frame, 1)
+			return _animation_frame(REN_ANIMATION_BASIC, walk_frame, 1)
 		&"jump":
 			if velocity.y < -700.0:
-				return Vector2i(0, 2)
+				return _animation_frame(REN_ANIMATION_BASIC, 0, 2)
 			if velocity.y < -430.0:
-				return Vector2i(1, 2)
+				return _animation_frame(REN_ANIMATION_BASIC, 1, 2)
 			if velocity.y < -100.0:
-				return Vector2i(2, 2)
+				return _animation_frame(REN_ANIMATION_BASIC, 2, 2)
 			if velocity.y < 190.0:
-				return Vector2i(3, 2)
-			return Vector2i(4, 2)
+				return _animation_frame(REN_ANIMATION_BASIC, 3, 2)
+			return _animation_frame(REN_ANIMATION_BASIC, 4, 2)
 		&"light":
-			return Vector2i(_basic_attack_sprite_frame(), 3)
+			return _animation_frame(REN_ANIMATION_BASIC, _basic_attack_sprite_frame(), 3)
 		&"heavy":
-			return Vector2i(_basic_attack_sprite_frame(), 4)
+			return _animation_frame(REN_ANIMATION_BASIC, _basic_attack_sprite_frame(), 4)
+		&"crouch":
+			return _animation_frame(
+				REN_ANIMATION_GROUND,
+				floori(float(motion_tick) / 10.0) % 5,
+				0
+			)
+		&"crouch_light":
+			return _animation_frame(REN_ANIMATION_GROUND, _basic_attack_sprite_frame(), 1)
+		&"forward_heavy":
+			return _animation_frame(REN_ANIMATION_GROUND, _basic_attack_sprite_frame(), 2)
+		&"crouch_heavy":
+			return _animation_frame(REN_ANIMATION_GROUND, _basic_attack_sprite_frame(), 3)
+		&"throw":
+			if throw_backwards:
+				return _animation_frame(
+					REN_ANIMATION_AIR_SPECIAL,
+					_basic_attack_sprite_frame(),
+					0
+				)
+			return _animation_frame(REN_ANIMATION_GROUND, _basic_attack_sprite_frame(), 4)
+		&"jump_light":
+			return _animation_frame(REN_ANIMATION_AIR_SPECIAL, _basic_attack_sprite_frame(), 1)
+		&"jump_heavy":
+			return _animation_frame(REN_ANIMATION_AIR_SPECIAL, _basic_attack_sprite_frame(), 2)
+		&"ren_pulse":
+			return _animation_frame(REN_ANIMATION_AIR_SPECIAL, _basic_attack_sprite_frame(), 3)
+		&"ren_palm":
+			return _animation_frame(REN_ANIMATION_AIR_SPECIAL, _basic_attack_sprite_frame(), 4)
+		&"ren_rise":
+			return _animation_frame(REN_ANIMATION_SPECIAL, _basic_attack_sprite_frame(), 0)
+		&"ren_dive":
+			return _animation_frame(REN_ANIMATION_SPECIAL, _basic_attack_sprite_frame(), 1)
+		&"ren_super":
+			var super_frame := _ren_super_sprite_frame()
+			return _animation_frame(
+				REN_ANIMATION_SPECIAL,
+				super_frame % 5,
+				2 + floori(float(super_frame) / 5.0)
+			)
+		&"hitstun":
+			return _animation_frame(
+				REN_ANIMATION_REACTION,
+				_stun_sprite_frame(16, "HIT:"),
+				0
+			)
+		&"blockstun":
+			return _animation_frame(
+				REN_ANIMATION_REACTION,
+				_stun_sprite_frame(10, "BLOCK:"),
+				2 if block_stance_crouching else 1
+			)
+		&"knockdown":
+			return _animation_frame(
+				REN_ANIMATION_REACTION,
+				_knockdown_sprite_frame(),
+				3
+			)
 		_:
-			return Vector2i(-1, -1)
+			return Vector3i(-1, -1, -1)
 
 
 func _has_character_image() -> bool:
-	return _animated_sprite_cell().x >= 0 or character_texture != null
+	return _animated_sprite_frame().x >= 0 or character_texture != null
 
 
 func _draw_character_image(modulate: Color) -> bool:
-	var sprite_cell := _animated_sprite_cell()
-	if sprite_cell.x >= 0:
+	var sprite_frame := _animated_sprite_frame()
+	if sprite_frame.x >= 0:
 		var source_position := Vector2(
-			float(sprite_cell.x) * SPRITE_SHEET_CELL_SIZE,
-			float(sprite_cell.y) * SPRITE_SHEET_CELL_SIZE
+			float(sprite_frame.y) * SPRITE_SHEET_CELL_SIZE,
+			float(sprite_frame.z) * SPRITE_SHEET_CELL_SIZE
 		)
 		draw_texture_rect_region(
-			character_animation_texture,
+			character_animation_textures[sprite_frame.x],
 			Rect2(
 				-VISUAL_SIZE * 0.5,
 				-VISUAL_SIZE + SPRITE_DRAW_OFFSET_Y,
@@ -1352,7 +1463,7 @@ func _draw() -> void:
 	var visual_rotation: float = pose.rotation
 	var visual_scale: Vector2 = pose.scale
 	var visual_modulate: Color = pose.modulate
-	if _animated_sprite_cell().x >= 0:
+	if _animated_sprite_frame().x >= 0:
 		visual_offset *= 0.25
 		visual_rotation *= 0.2
 		visual_scale = Vector2(float(facing), 1.0).lerp(visual_scale, 0.2)
