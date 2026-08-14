@@ -11,6 +11,8 @@ const BODY_WIDTH := 58.0
 const BODY_HEIGHT := 126.0
 const CROUCH_HEIGHT := 82.0
 const VISUAL_SIZE := 176.0
+const SPRITE_SHEET_CELL_SIZE := 256.0
+const SPRITE_DRAW_OFFSET_Y := 8.0
 const MAX_METER := 100
 const INPUT_BUFFER_FRAMES := 7
 const AMBIENT_MOTION_SAMPLE_FRAMES := 2
@@ -174,6 +176,7 @@ var fighter_name := "PLAYER 1"
 var body_color := Color("4ed8ff")
 var accent_color := Color("e9fbff")
 var character_texture: Texture2D
+var character_animation_texture: Texture2D
 var health := 1000
 var meter := 0
 var facing := 1
@@ -231,10 +234,17 @@ func setup(
 	display_name: String,
 	color: Color,
 	spawn_position: Vector2,
-	texture: Texture2D = null
+	texture: Texture2D = null,
+	animation_texture: Texture2D = null
 ) -> void:
 	player_id = id
-	configure_character(StringName(display_name.to_lower()), display_name, color, texture)
+	configure_character(
+		StringName(display_name.to_lower()),
+		display_name,
+		color,
+		texture,
+		animation_texture
+	)
 	position = spawn_position
 	facing = 1 if player_id == 0 else -1
 	reset_for_round(spawn_position)
@@ -244,13 +254,15 @@ func configure_character(
 	selected_character_id: StringName,
 	display_name: String,
 	color: Color,
-	texture: Texture2D
+	texture: Texture2D,
+	animation_texture: Texture2D = null
 ) -> void:
 	character_id = selected_character_id
 	fighter_name = display_name
 	body_color = color
 	accent_color = color.lightened(0.55)
 	character_texture = texture
+	character_animation_texture = animation_texture
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	_invalidate_visual_cache()
 	queue_redraw()
@@ -980,6 +992,87 @@ func _attack_motion_factors() -> Dictionary:
 	}
 
 
+func _basic_attack_sprite_frame() -> int:
+	var data: Dictionary = ATTACKS[state]
+	var startup := int(data.startup)
+	var active_end := startup + int(data.active)
+	var recovery := maxi(1, int(data.recovery))
+	if state_frame <= 0:
+		return 0
+	if state_frame <= startup:
+		return 1
+	if state_frame <= active_end:
+		return 2
+	var recovery_progress := float(state_frame - active_end) / float(recovery)
+	return 3 if recovery_progress < 0.55 else 4
+
+
+func _animated_sprite_cell() -> Vector2i:
+	if character_animation_texture == null:
+		return Vector2i(-1, -1)
+
+	match state:
+		&"idle":
+			if landing_frames > 0:
+				return Vector2i(4, 2)
+			return Vector2i(floori(float(motion_tick) / 10.0) % 5, 0)
+		&"walk":
+			var walk_frame := floori(float(motion_tick) / 5.0) % 5
+			if velocity.x * float(facing) < 0.0:
+				walk_frame = 4 - walk_frame
+			return Vector2i(walk_frame, 1)
+		&"jump":
+			if velocity.y < -700.0:
+				return Vector2i(0, 2)
+			if velocity.y < -430.0:
+				return Vector2i(1, 2)
+			if velocity.y < -100.0:
+				return Vector2i(2, 2)
+			if velocity.y < 190.0:
+				return Vector2i(3, 2)
+			return Vector2i(4, 2)
+		&"light":
+			return Vector2i(_basic_attack_sprite_frame(), 3)
+		&"heavy":
+			return Vector2i(_basic_attack_sprite_frame(), 4)
+		_:
+			return Vector2i(-1, -1)
+
+
+func _has_character_image() -> bool:
+	return _animated_sprite_cell().x >= 0 or character_texture != null
+
+
+func _draw_character_image(modulate: Color) -> bool:
+	var sprite_cell := _animated_sprite_cell()
+	if sprite_cell.x >= 0:
+		var source_position := Vector2(
+			float(sprite_cell.x) * SPRITE_SHEET_CELL_SIZE,
+			float(sprite_cell.y) * SPRITE_SHEET_CELL_SIZE
+		)
+		draw_texture_rect_region(
+			character_animation_texture,
+			Rect2(
+				-VISUAL_SIZE * 0.5,
+				-VISUAL_SIZE + SPRITE_DRAW_OFFSET_Y,
+				VISUAL_SIZE,
+				VISUAL_SIZE
+			),
+			Rect2(source_position, Vector2.ONE * SPRITE_SHEET_CELL_SIZE),
+			modulate
+		)
+		return true
+	if character_texture != null:
+		draw_texture_rect(
+			character_texture,
+			Rect2(-VISUAL_SIZE * 0.5, -VISUAL_SIZE, VISUAL_SIZE, VISUAL_SIZE),
+			false,
+			modulate
+		)
+		return true
+	return false
+
+
 func _visual_pose() -> Dictionary:
 	var visual_offset := Vector2.ZERO
 	var visual_rotation := 0.0
@@ -1202,7 +1295,7 @@ func _draw_motion_echoes(
 	visual_rotation: float,
 	visual_scale: Vector2
 ) -> void:
-	if character_texture == null:
+	if not _has_character_image():
 		return
 
 	var echo_alpha := 0.0
@@ -1241,12 +1334,7 @@ func _draw_motion_echoes(
 		var echo_scale := visual_scale * Vector2(1.0 + 0.012 * echo_index, 1.0 - 0.012 * echo_index)
 		var alpha := echo_alpha * (1.0 - float(echo_index - 1) / float(echo_count + 1))
 		draw_set_transform(echo_offset, visual_rotation, echo_scale)
-		draw_texture_rect(
-			character_texture,
-			Rect2(-VISUAL_SIZE * 0.5, -VISUAL_SIZE, VISUAL_SIZE, VISUAL_SIZE),
-			false,
-			Color(echo_color, alpha)
-		)
+		_draw_character_image(Color(echo_color, alpha))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
@@ -1264,6 +1352,10 @@ func _draw() -> void:
 	var visual_rotation: float = pose.rotation
 	var visual_scale: Vector2 = pose.scale
 	var visual_modulate: Color = pose.modulate
+	if _animated_sprite_cell().x >= 0:
+		visual_offset *= 0.25
+		visual_rotation *= 0.2
+		visual_scale = Vector2(float(facing), 1.0).lerp(visual_scale, 0.2)
 
 	if meter >= MAX_METER:
 		var aura_color := Color("74e8ff") if character_id == &"ren" else Color("ff557d")
@@ -1272,14 +1364,7 @@ func _draw() -> void:
 
 	_draw_motion_echoes(visual_offset, visual_rotation, visual_scale)
 	draw_set_transform(visual_offset, visual_rotation, visual_scale)
-	if character_texture != null:
-		draw_texture_rect(
-			character_texture,
-			Rect2(-VISUAL_SIZE * 0.5, -VISUAL_SIZE, VISUAL_SIZE, VISUAL_SIZE),
-			false,
-			visual_modulate
-		)
-	else:
+	if not _draw_character_image(visual_modulate):
 		_draw_fallback_fighter()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 

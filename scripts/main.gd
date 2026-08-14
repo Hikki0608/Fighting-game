@@ -4,6 +4,7 @@ const FighterScene := preload("res://scripts/fighter.gd")
 const CpuControllerScript := preload("res://scripts/cpu_controller.gd")
 const ArenaBackgroundTexture := preload("res://assets/arena_background.svg")
 const RenFighterTexture := preload("res://assets/characters/ren_fighter.png")
+const RenBasicSpriteSheet := preload("res://assets/characters/ren_basic_sprites_v1.png")
 const VelFighterTexture := preload("res://assets/characters/vel_fighter.png")
 const SCREEN_SIZE := Vector2(1152.0, 648.0)
 const ROUND_SECONDS := 99
@@ -16,14 +17,16 @@ const CHARACTER_ROSTER := [
 		"name": "REN",
 		"title": "AZURE TACTICIAN",
 		"color": Color("2cccf4"),
-		"texture": RenFighterTexture
+		"texture": RenFighterTexture,
+		"animation_texture": RenBasicSpriteSheet
 	},
 	{
 		"id": &"vel",
 		"name": "VEL",
 		"title": "CRIMSON HUNTER",
 		"color": Color("ff4f86"),
-		"texture": VelFighterTexture
+		"texture": VelFighterTexture,
+		"animation_texture": null
 	}
 ]
 const WEB_FULLSCREEN_HELPER := """
@@ -229,8 +232,22 @@ func _create_fighters() -> void:
 	add_child(p2)
 	var ren: Dictionary = CHARACTER_ROSTER[0]
 	var vel: Dictionary = CHARACTER_ROSTER[1]
-	p1.setup(0, ren.name, ren.color, Vector2(330.0, Fighter.GROUND_Y), ren.texture)
-	p2.setup(1, vel.name, vel.color, Vector2(822.0, Fighter.GROUND_Y), vel.texture)
+	p1.setup(
+		0,
+		ren.name,
+		ren.color,
+		Vector2(330.0, Fighter.GROUND_Y),
+		ren.texture,
+		ren.animation_texture
+	)
+	p2.setup(
+		1,
+		vel.name,
+		vel.color,
+		Vector2(822.0, Fighter.GROUND_Y),
+		vel.texture,
+		vel.animation_texture
+	)
 	fighters = [p1, p2]
 
 
@@ -799,7 +816,8 @@ func _start_match(selected_mode: StringName) -> void:
 			StringName(character_data["id"]),
 			str(character_data["name"]),
 			character_data["color"],
-			character_data["texture"] as Texture2D
+			character_data["texture"] as Texture2D,
+			character_data["animation_texture"] as Texture2D
 		)
 		fighters[index].reset_match_resources()
 	wins = [0, 0]
