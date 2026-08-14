@@ -638,14 +638,14 @@ func _refresh_character_select() -> void:
 		character_hint_label.text = (
 			"A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / F: CONFIRM    ESC: BACK"
 			if selecting_player == 0
-			else "LEFT / RIGHT OR A / D: CHOOSE    ENTER / SPACE / J: CONFIRM    ESC: BACK"
+			else "A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / F: CONFIRM    ESC: BACK"
 		)
 	else:
 		character_prompt_label.text = "PLAYER %d  -  CHOOSE YOUR FIGHTER" % (selecting_player + 1)
 		character_hint_label.text = (
 			"A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / F: CONFIRM    ESC: BACK"
 			if selecting_player == 0
-			else "LEFT / RIGHT OR A / D: CHOOSE    ENTER / SPACE / J: CONFIRM    ESC: BACK"
+			else "A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / F: CONFIRM    ESC: BACK"
 		)
 
 	var current_player_label := (
@@ -702,10 +702,7 @@ func _handle_character_select_input() -> void:
 	right_pressed = _key_just_pressed(KEY_D) or right_pressed
 	var confirm_pressed := _key_just_pressed(KEY_ENTER)
 	confirm_pressed = _key_just_pressed(KEY_SPACE) or confirm_pressed
-	if selecting_player == 0:
-		confirm_pressed = _key_just_pressed(KEY_F) or confirm_pressed
-	else:
-		confirm_pressed = _key_just_pressed(KEY_J) or confirm_pressed
+	confirm_pressed = _key_just_pressed(KEY_F) or confirm_pressed
 
 	if left_pressed:
 		character_selection[selecting_player] = wrapi(
