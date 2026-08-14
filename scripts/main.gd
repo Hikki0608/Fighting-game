@@ -15,6 +15,13 @@ const ROUND_SECONDS := 99
 const ROUNDS_TO_WIN := 2
 const MODE_SOLO: StringName = &"solo"
 const MODE_VERSUS: StringName = &"versus"
+const MODE_TRAINING: StringName = &"training"
+const TRAINING_GUARD_OFF := 0
+const TRAINING_GUARD_AFTER_HIT := 1
+const TRAINING_GUARD_ALWAYS := 2
+const TRAINING_HEALTH_RECOVERY_FRAMES := 45
+const TRAINING_GUARD_RELEASE_FRAMES := 45
+const TRAINING_INPUT_HISTORY_SIZE := 8
 const CHARACTER_ROSTER := [
 	{
 		"id": &"ren",
@@ -143,15 +150,31 @@ var character_selection := [0, 1]
 var selecting_player := 0
 var cpu_controller: CpuController
 var meta_key_state := {}
+var training_guard_mode := TRAINING_GUARD_OFF
+var training_guard_armed := false
+var training_guard_release_frames := 0
+var training_combo_active := false
+var training_current_hits := 0
+var training_current_damage := 0
+var training_last_hits := 0
+var training_last_damage := 0
+var training_best_hits := 0
+var training_best_damage := 0
+var training_health_recovery_frames := 0
+var training_input_history: Array[String] = []
+var training_previous_axis := Vector2.ZERO
 
 var announcement_label: Label
 var subtitle_label: Label
 var training_label: Label
+var training_hud_label: Label
+var training_input_label: Label
 var mode_label: Label
 var menu_layer: CanvasLayer
 var character_select_layer: CanvasLayer
 var solo_button: Button
 var versus_button: Button
+var training_button: Button
 var fullscreen_button: Button
 var character_prompt_label: Label
 var character_summary_label: Label
@@ -290,8 +313,8 @@ func _create_ui() -> void:
 	add_child(mode_label)
 
 	training_label = Label.new()
-	training_label.position = Vector2(24.0, 126.0)
-	training_label.size = Vector2(460.0, 116.0)
+	training_label.position = Vector2(24.0, 326.0)
+	training_label.size = Vector2(560.0, 116.0)
 	training_label.add_theme_font_size_override("font_size", 16)
 	training_label.add_theme_color_override("font_color", Color("d9f7ff"))
 	training_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
@@ -299,6 +322,31 @@ func _create_ui() -> void:
 	training_label.add_theme_constant_override("shadow_offset_y", 2)
 	training_label.visible = false
 	add_child(training_label)
+
+	training_hud_label = Label.new()
+	training_hud_label.position = Vector2(24.0, 132.0)
+	training_hud_label.size = Vector2(376.0, 180.0)
+	training_hud_label.add_theme_font_size_override("font_size", 16)
+	training_hud_label.add_theme_color_override("font_color", Color("d9f7ff"))
+	training_hud_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
+	training_hud_label.add_theme_constant_override("shadow_offset_x", 1)
+	training_hud_label.add_theme_constant_override("shadow_offset_y", 1)
+	training_hud_label.add_theme_stylebox_override("normal", _make_training_panel_style(Color("2cccf4")))
+	training_hud_label.visible = false
+	add_child(training_hud_label)
+
+	training_input_label = Label.new()
+	training_input_label.position = Vector2(816.0, 132.0)
+	training_input_label.size = Vector2(312.0, 260.0)
+	training_input_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	training_input_label.add_theme_font_size_override("font_size", 16)
+	training_input_label.add_theme_color_override("font_color", Color("d9f7ff"))
+	training_input_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
+	training_input_label.add_theme_constant_override("shadow_offset_x", 1)
+	training_input_label.add_theme_constant_override("shadow_offset_y", 1)
+	training_input_label.add_theme_stylebox_override("normal", _make_training_panel_style(Color("ff4f86")))
+	training_input_label.visible = false
+	add_child(training_input_label)
 
 
 func _create_mode_menu() -> void:
@@ -333,25 +381,34 @@ func _create_mode_menu() -> void:
 	subtitle.add_theme_color_override("font_color", Color("91ddea"))
 	menu_layer.add_child(subtitle)
 
-	solo_button = _make_mode_button("1 PLAYER   •   VS CPU", Vector2(326.0, 250.0))
-	versus_button = _make_mode_button("2 PLAYERS   •   LOCAL VERSUS", Vector2(326.0, 335.0))
+	solo_button = _make_mode_button(
+		"1 PLAYER   •   VS CPU", Vector2(326.0, 220.0), Vector2(500.0, 58.0), 20
+	)
+	versus_button = _make_mode_button(
+		"2 PLAYERS   •   LOCAL VERSUS", Vector2(326.0, 294.0), Vector2(500.0, 58.0), 20
+	)
+	training_button = _make_mode_button(
+		"TRAINING   •   FREE PRACTICE", Vector2(326.0, 368.0), Vector2(500.0, 58.0), 20
+	)
 	fullscreen_button = _make_mode_button(
 		"FULLSCREEN   •   ALT + ENTER",
-		Vector2(426.0, 430.0),
+		Vector2(426.0, 452.0),
 		Vector2(300.0, 52.0),
 		18,
 		false
 	)
 	solo_button.pressed.connect(_start_solo_mode)
 	versus_button.pressed.connect(_start_versus_mode)
+	training_button.pressed.connect(_start_training_mode)
 	fullscreen_button.pressed.connect(_toggle_fullscreen)
 	fullscreen_button.tooltip_text = "Toggle fullscreen (Alt + Enter)"
 	menu_layer.add_child(solo_button)
 	menu_layer.add_child(versus_button)
+	menu_layer.add_child(training_button)
 	menu_layer.add_child(fullscreen_button)
 
 	var hint := Label.new()
-	hint.position = Vector2(226.0, 510.0)
+	hint.position = Vector2(226.0, 525.0)
 	hint.size = Vector2(700.0, 70.0)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.text = "UP / DOWN OR W / S TO CHOOSE    •    ENTER TO START\nM: MODE SELECT    •    ALT + ENTER: FULLSCREEN"
@@ -389,6 +446,19 @@ func _make_button_style(fill: Color, border: Color, border_width: int) -> StyleB
 	style.border_color = border
 	style.set_border_width_all(border_width)
 	style.set_corner_radius_all(8)
+	return style
+
+
+func _make_training_panel_style(accent: Color) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.025, 0.065, 0.085, 0.88)
+	style.border_color = Color(accent, 0.72)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(6)
+	style.content_margin_left = 14.0
+	style.content_margin_right = 14.0
+	style.content_margin_top = 10.0
+	style.content_margin_bottom = 10.0
 	return style
 
 
@@ -543,6 +613,8 @@ func _show_character_select(selected_mode: StringName) -> void:
 	subtitle_label.visible = false
 	mode_label.visible = false
 	training_label.visible = false
+	training_hud_label.visible = false
+	training_input_label.visible = false
 	selecting_player = 0
 	character_selection = [0, 1]
 	for fighter in fighters:
@@ -557,6 +629,17 @@ func _refresh_character_select() -> void:
 		character_selection[1] = (character_selection[0] + 1) % CHARACTER_ROSTER.size()
 		character_prompt_label.text = "PLAYER 1  -  CHOOSE YOUR FIGHTER"
 		character_hint_label.text = "A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / F: CONFIRM    ESC: BACK"
+	elif game_mode == MODE_TRAINING:
+		character_prompt_label.text = (
+			"PLAYER 1  -  CHOOSE YOUR FIGHTER"
+			if selecting_player == 0
+			else "TRAINING DUMMY  -  CHOOSE FIGHTER"
+		)
+		character_hint_label.text = (
+			"A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / F: CONFIRM    ESC: BACK"
+			if selecting_player == 0
+			else "LEFT / RIGHT OR A / D: CHOOSE    ENTER / SPACE / J: CONFIRM    ESC: BACK"
+		)
 	else:
 		character_prompt_label.text = "PLAYER %d  -  CHOOSE YOUR FIGHTER" % (selecting_player + 1)
 		character_hint_label.text = (
@@ -565,12 +648,16 @@ func _refresh_character_select() -> void:
 			else "LEFT / RIGHT OR A / D: CHOOSE    ENTER / SPACE / J: CONFIRM    ESC: BACK"
 		)
 
+	var current_player_label := (
+		"DUMMY" if game_mode == MODE_TRAINING and selecting_player == 1
+		else "P%d" % (selecting_player + 1)
+	)
 	for index in CHARACTER_ROSTER.size():
 		var character_data: Dictionary = CHARACTER_ROSTER[index]
 		var accent: Color = character_data["color"]
 		var is_current: bool = character_selection[selecting_player] == index
 		var is_p1_locked: bool = (
-			game_mode == MODE_VERSUS
+			(game_mode == MODE_VERSUS or game_mode == MODE_TRAINING)
 			and selecting_player == 1
 			and character_selection[0] == index
 		)
@@ -583,11 +670,11 @@ func _refresh_character_select() -> void:
 			_make_button_style(fill.lightened(0.07), Color("fff3c4") if is_current else accent, 5 if is_current else 4)
 		)
 		if is_p1_locked and is_current:
-			character_status_labels[index].text = "P1 LOCKED  /  P2 SELECTED"
+			character_status_labels[index].text = "P1 LOCKED  /  %s SELECTED" % current_player_label
 		elif is_p1_locked:
 			character_status_labels[index].text = "P1 LOCKED"
 		elif is_current:
-			character_status_labels[index].text = "P%d SELECTED" % (selecting_player + 1)
+			character_status_labels[index].text = "%s SELECTED" % current_player_label
 		else:
 			character_status_labels[index].text = "CHOOSE"
 		character_status_labels[index].add_theme_color_override(
@@ -597,7 +684,10 @@ func _refresh_character_select() -> void:
 
 	var p1_data: Dictionary = CHARACTER_ROSTER[character_selection[0]]
 	var p2_data: Dictionary = CHARACTER_ROSTER[character_selection[1]]
-	var opponent_label := "CPU" if game_mode == MODE_SOLO else "P2"
+	var opponent_label := (
+		"CPU" if game_mode == MODE_SOLO
+		else ("DUMMY" if game_mode == MODE_TRAINING else "P2")
+	)
 	character_summary_label.text = "P1  %s        VS        %s  %s" % [
 		str(p1_data["name"]),
 		opponent_label,
@@ -662,12 +752,16 @@ func _physics_process(_delta: float) -> void:
 		return
 
 	fighters[0].capture_input()
+	if game_mode == MODE_TRAINING:
+		_capture_training_input()
 	if game_mode == MODE_SOLO:
 		if phase == &"fight":
 			var cpu_intent := cpu_controller.build_intent(fighters[1], fighters[0])
 			fighters[1].apply_virtual_input(cpu_intent.axis, cpu_intent.buttons)
 		else:
 			fighters[1].clear_input()
+	elif game_mode == MODE_TRAINING:
+		fighters[1].apply_virtual_input(_training_dummy_axis())
 	else:
 		fighters[1].capture_input()
 
@@ -689,7 +783,8 @@ func _physics_process(_delta: float) -> void:
 			announcement = ""
 			announcement_sub = ""
 	elif phase == &"fight":
-		round_frames = maxi(0, round_frames - 1)
+		if game_mode != MODE_TRAINING:
+			round_frames = maxi(0, round_frames - 1)
 		for i in fighters.size():
 			fighters[i].simulate(fighters[1 - i], true)
 		_spawn_pending_projectiles()
@@ -697,7 +792,9 @@ func _physics_process(_delta: float) -> void:
 		_resolve_body_collision()
 		_resolve_attacks()
 		_resolve_projectiles()
-		if fighters[0].health <= 0 or fighters[1].health <= 0 or round_frames <= 0:
+		if game_mode == MODE_TRAINING:
+			_update_training_state()
+		elif fighters[0].health <= 0 or fighters[1].health <= 0 or round_frames <= 0:
 			_finish_round()
 	elif phase == &"round_over":
 		phase_frames -= 1
@@ -736,8 +833,15 @@ func _handle_system_input() -> void:
 		training_label.visible = training_visible
 		for fighter in fighters:
 			fighter.set_debug_boxes(training_visible)
+	if game_mode == MODE_TRAINING:
+		if _key_just_pressed(KEY_T):
+			_cycle_training_guard()
+		if _key_just_pressed(KEY_C):
+			_clear_training_records()
 	if _key_just_pressed(KEY_ENTER):
-		if phase == &"match_over":
+		if game_mode == MODE_TRAINING:
+			_reset_training_position()
+		elif phase == &"match_over":
 			wins = [0, 0]
 			round_number = 1
 			for fighter in fighters:
@@ -755,14 +859,20 @@ func _handle_mode_menu_input() -> void:
 	var confirm_pressed := _key_just_pressed(KEY_ENTER)
 	confirm_pressed = _key_just_pressed(KEY_SPACE) or confirm_pressed
 
-	if up_pressed or down_pressed:
-		mode_selection = 1 - mode_selection
+	if up_pressed:
+		mode_selection = wrapi(mode_selection - 1, 0, 3)
+		_update_mode_selection()
+	elif down_pressed:
+		mode_selection = wrapi(mode_selection + 1, 0, 3)
 		_update_mode_selection()
 	if confirm_pressed:
-		if mode_selection == 0:
-			_start_solo_mode()
-		else:
-			_start_versus_mode()
+		match mode_selection:
+			0:
+				_start_solo_mode()
+			1:
+				_start_versus_mode()
+			_:
+				_start_training_mode()
 
 
 func _key_just_pressed(keycode: Key) -> bool:
@@ -781,6 +891,8 @@ func _show_mode_menu() -> void:
 	projectiles.clear()
 	training_visible = false
 	training_label.visible = false
+	training_hud_label.visible = false
+	training_input_label.visible = false
 	announcement_label.visible = false
 	subtitle_label.visible = false
 	mode_label.visible = false
@@ -796,10 +908,13 @@ func _show_mode_menu() -> void:
 
 
 func _update_mode_selection() -> void:
-	if mode_selection == 0:
-		solo_button.grab_focus()
-	else:
-		versus_button.grab_focus()
+	match mode_selection:
+		0:
+			solo_button.grab_focus()
+		1:
+			versus_button.grab_focus()
+		_:
+			training_button.grab_focus()
 
 
 func _start_solo_mode() -> void:
@@ -808,6 +923,10 @@ func _start_solo_mode() -> void:
 
 func _start_versus_mode() -> void:
 	_show_character_select(MODE_VERSUS)
+
+
+func _start_training_mode() -> void:
+	_show_character_select(MODE_TRAINING)
 
 
 func _start_match(selected_mode: StringName) -> void:
@@ -834,14 +953,16 @@ func _start_match(selected_mode: StringName) -> void:
 	round_number = 1
 	training_visible = false
 	training_label.visible = false
+	training_hud_label.visible = game_mode == MODE_TRAINING
+	training_input_label.visible = game_mode == MODE_TRAINING
+	if game_mode == MODE_TRAINING:
+		_reset_training_session()
 	cpu_controller.reset()
 	_invalidate_hud_cache()
 	_start_round()
 
 
 func _start_round() -> void:
-	phase = &"intro"
-	phase_frames = 120
 	round_frames = ROUND_SECONDS * 60
 	global_hitstop = 0
 	hit_sparks.clear()
@@ -852,12 +973,235 @@ func _start_round() -> void:
 	fighters[1].facing = -1
 	fighters[0].reset_for_round(Vector2(330.0, Fighter.GROUND_Y))
 	fighters[1].reset_for_round(Vector2(822.0, Fighter.GROUND_Y))
+	if game_mode == MODE_TRAINING:
+		phase = &"fight"
+		phase_frames = 0
+		fighters[0].gain_meter(Fighter.MAX_METER)
+		fighters[1].gain_meter(Fighter.MAX_METER)
+		announcement = ""
+		announcement_sub = ""
+		return
+	phase = &"intro"
+	phase_frames = 120
 	announcement = "ROUND %d" % round_number
 	announcement_sub = "FIRST TO %d ROUNDS" % ROUNDS_TO_WIN
 
 
+func _reset_training_session() -> void:
+	training_guard_mode = TRAINING_GUARD_OFF
+	training_guard_armed = false
+	training_guard_release_frames = 0
+	training_combo_active = false
+	training_current_hits = 0
+	training_current_damage = 0
+	training_last_hits = 0
+	training_last_damage = 0
+	training_best_hits = 0
+	training_best_damage = 0
+	training_health_recovery_frames = 0
+	training_input_history.clear()
+	training_previous_axis = Vector2.ZERO
+
+
+func _reset_training_position() -> void:
+	if game_mode != MODE_TRAINING:
+		return
+	phase = &"fight"
+	phase_frames = 0
+	round_frames = ROUND_SECONDS * 60
+	global_hitstop = 0
+	screen_shake = 0.0
+	position = Vector2.ZERO
+	hit_sparks.clear()
+	projectiles.clear()
+	fighters[0].facing = 1
+	fighters[1].facing = -1
+	fighters[0].reset_for_round(Vector2(330.0, Fighter.GROUND_Y))
+	fighters[1].reset_for_round(Vector2(822.0, Fighter.GROUND_Y))
+	fighters[0].gain_meter(Fighter.MAX_METER)
+	fighters[1].gain_meter(Fighter.MAX_METER)
+	training_guard_armed = false
+	training_guard_release_frames = 0
+	training_combo_active = false
+	training_current_hits = 0
+	training_current_damage = 0
+	training_health_recovery_frames = 0
+	training_input_history.clear()
+	training_previous_axis = Vector2.ZERO
+	announcement = ""
+	announcement_sub = "POSITIONS RESET"
+	combat_callout_frames = 45
+	_invalidate_hud_cache()
+
+
+func _clear_training_records() -> void:
+	training_last_hits = 0
+	training_last_damage = 0
+	training_best_hits = 0
+	training_best_damage = 0
+	if not training_combo_active:
+		training_current_hits = 0
+		training_current_damage = 0
+		training_health_recovery_frames = 0
+		fighters[1].health = 1000
+	announcement_sub = "COMBO RECORDS CLEARED"
+	combat_callout_frames = 45
+
+
+func _cycle_training_guard() -> void:
+	training_guard_mode = (training_guard_mode + 1) % 3
+	training_guard_armed = false
+	training_guard_release_frames = 0
+	fighters[1].clear_input()
+	announcement_sub = "DUMMY GUARD: %s" % _training_guard_name()
+	combat_callout_frames = 60
+
+
+func _training_guard_name() -> String:
+	match training_guard_mode:
+		TRAINING_GUARD_AFTER_HIT:
+			return "AFTER FIRST HIT"
+		TRAINING_GUARD_ALWAYS:
+			return "ALL"
+		_:
+			return "OFF"
+
+
+func _training_dummy_axis() -> Vector2:
+	var should_guard := (
+		training_guard_mode == TRAINING_GUARD_ALWAYS
+		or (training_guard_mode == TRAINING_GUARD_AFTER_HIT and training_guard_armed)
+	)
+	if not should_guard:
+		return Vector2.ZERO
+	var away := 1.0 if fighters[0].position.x < fighters[1].position.x else -1.0
+	var block_type := _training_incoming_block_type()
+	var crouch := 1.0 if block_type == &"low" else 0.0
+	return Vector2(away, crouch)
+
+
+func _training_incoming_block_type() -> StringName:
+	if fighters[0].is_attacking():
+		return StringName(fighters[0].current_attack().get("block_type", &"mid"))
+	for projectile in projectiles:
+		if int(projectile.get("owner_id", -1)) == 0:
+			var projectile_attack: Dictionary = projectile.get("attack", {})
+			return StringName(projectile_attack.get("block_type", &"mid"))
+	return &"mid"
+
+
+func _record_training_hit(result: Dictionary) -> void:
+	if bool(result.get("blocked", false)):
+		return
+	var combo_hits := int(result.get("combo", 1))
+	if not training_combo_active or combo_hits <= 1:
+		training_current_hits = 0
+		training_current_damage = 0
+	training_combo_active = true
+	training_current_hits = combo_hits
+	training_current_damage += int(result.get("damage", 0))
+	training_best_hits = maxi(training_best_hits, training_current_hits)
+	training_best_damage = maxi(training_best_damage, training_current_damage)
+	training_health_recovery_frames = 0
+	if training_guard_mode == TRAINING_GUARD_AFTER_HIT:
+		training_guard_armed = true
+		training_guard_release_frames = 0
+
+
+func _update_training_state() -> void:
+	fighters[0].gain_meter(Fighter.MAX_METER)
+	fighters[1].gain_meter(Fighter.MAX_METER)
+	var dummy := fighters[1]
+	var dummy_recovered := (
+		dummy.combo_received == 0
+		and dummy.state != &"hitstun"
+		and dummy.state != &"knockdown"
+	)
+	if training_combo_active and dummy_recovered:
+		training_combo_active = false
+		training_last_hits = training_current_hits
+		training_last_damage = training_current_damage
+		training_best_hits = maxi(training_best_hits, training_current_hits)
+		training_best_damage = maxi(training_best_damage, training_current_damage)
+		training_current_hits = 0
+		training_current_damage = 0
+		training_health_recovery_frames = TRAINING_HEALTH_RECOVERY_FRAMES
+
+	if not training_combo_active and training_health_recovery_frames > 0:
+		training_health_recovery_frames -= 1
+		if training_health_recovery_frames == 0:
+			dummy.health = 1000
+
+	if training_guard_mode != TRAINING_GUARD_AFTER_HIT or not training_guard_armed:
+		return
+	var player_pressure := fighters[0].is_attacking()
+	if not player_pressure:
+		for projectile in projectiles:
+			if int(projectile.get("owner_id", -1)) == 0:
+				player_pressure = true
+				break
+	if dummy_recovered and not player_pressure:
+		training_guard_release_frames += 1
+		if training_guard_release_frames >= TRAINING_GUARD_RELEASE_FRAMES:
+			training_guard_armed = false
+			training_guard_release_frames = 0
+	else:
+		training_guard_release_frames = 0
+
+
+func _capture_training_input() -> void:
+	var axis: Vector2 = fighters[0].intent.axis
+	var pressed: Dictionary = fighters[0].intent.pressed
+	var buttons: Array[String] = []
+	if bool(pressed.get("light", false)):
+		buttons.append("L")
+	if bool(pressed.get("heavy", false)):
+		buttons.append("H")
+	if bool(pressed.get("special", false)):
+		buttons.append("SP")
+	if bool(pressed.get("throw", false)):
+		buttons.append("TH")
+
+	var direction := _training_direction_text(axis)
+	var direction_changed := axis != training_previous_axis
+	var entry := ""
+	if not buttons.is_empty():
+		entry = " + ".join(buttons)
+		if direction != "":
+			entry = "%s + %s" % [direction, entry]
+	elif direction_changed and direction != "":
+		entry = direction
+	if not entry.is_empty():
+		training_input_history.push_front(entry)
+		if training_input_history.size() > TRAINING_INPUT_HISTORY_SIZE:
+			training_input_history.pop_back()
+	training_previous_axis = axis
+
+
+func _training_direction_text(axis: Vector2) -> String:
+	match Vector2i(roundi(axis.x), roundi(axis.y)):
+		Vector2i(-1, -1):
+			return "↖"
+		Vector2i(0, -1):
+			return "↑"
+		Vector2i(1, -1):
+			return "↗"
+		Vector2i(-1, 0):
+			return "←"
+		Vector2i(1, 0):
+			return "→"
+		Vector2i(-1, 1):
+			return "↙"
+		Vector2i(0, 1):
+			return "↓"
+		Vector2i(1, 1):
+			return "↘"
+		_:
+			return ""
+
+
 func _finish_round() -> void:
-	if phase != &"fight":
+	if phase != &"fight" or game_mode == MODE_TRAINING:
 		return
 	projectiles.clear()
 	var winner := -1
@@ -989,6 +1333,8 @@ func _apply_attack_hit(
 	spark_position: Vector2
 ) -> void:
 	var result := defender.receive_attack(attack_data, attacker_x, forced_push_direction)
+	if game_mode == MODE_TRAINING and attacker == fighters[0] and defender == fighters[1]:
+		_record_training_hit(result)
 	var meter_gain := int(attack_data.get("meter_block", 0)) if result.blocked else int(attack_data.get("meter_hit", 0))
 	attacker.gain_meter(meter_gain)
 	defender.gain_meter(3 if result.blocked else 6)
@@ -1010,7 +1356,10 @@ func _apply_attack_hit(
 		announcement_sub = str(attack_data.get("label", "SUPER"))
 		combat_callout_frames = 60
 	if result.ko:
-		_finish_round()
+		if game_mode == MODE_TRAINING:
+			defender.health = 1
+		else:
+			_finish_round()
 
 
 func _perform_back_throw(attacker: Fighter, defender: Fighter) -> float:
@@ -1062,8 +1411,27 @@ func _update_ui() -> void:
 	_set_label_text_if_changed(subtitle_label, announcement_sub)
 	if game_mode == MODE_SOLO:
 		_set_label_text_if_changed(mode_label, "1 PLAYER  •  CPU STANDARD")
+	elif game_mode == MODE_TRAINING:
+		_set_label_text_if_changed(mode_label, "TRAINING MODE  •  FREE PRACTICE")
 	else:
 		_set_label_text_if_changed(mode_label, "2 PLAYERS  •  LOCAL VERSUS")
+	if game_mode == MODE_TRAINING:
+		var displayed_hits := training_current_hits if training_combo_active else training_last_hits
+		var displayed_damage := training_current_damage if training_combo_active else training_last_damage
+		var combo_label := "CURRENT COMBO" if training_combo_active else "LAST COMBO"
+		var training_hud_text := "TRAINING DATA\n%s:  %d HIT / %d DMG\nBEST:  %d HIT / %d DMG\nDUMMY GUARD:  %s\nENTER: RESET   T: GUARD   C: CLEAR\nF1: FRAME DATA / HITBOX" % [
+			combo_label,
+			displayed_hits,
+			displayed_damage,
+			training_best_hits,
+			training_best_damage,
+			_training_guard_name()
+		]
+		_set_label_text_if_changed(training_hud_label, training_hud_text)
+		var input_text := "INPUT HISTORY\n%s" % (
+			"—" if training_input_history.is_empty() else "\n".join(training_input_history)
+		)
+		_set_label_text_if_changed(training_input_label, input_text)
 	if training_visible:
 		var training_text := "FRAME DATA / HITBOX VIEW\nP1  %s\nP2  %s\nDistance: %.1f px    Enter: reset round" % [
 			fighters[0].frame_data_text(),
@@ -1092,7 +1460,7 @@ func _invalidate_hud_cache() -> void:
 
 
 func _request_hud_redraw() -> void:
-	var timer_seconds := ceili(float(round_frames) / 60.0)
+	var timer_seconds := -1 if game_mode == MODE_TRAINING else ceili(float(round_frames) / 60.0)
 	var effects_need_animation := not hit_sparks.is_empty() or not projectiles.is_empty()
 	var hud_changed: bool = (
 		last_drawn_p1_health != fighters[0].health
@@ -1157,12 +1525,13 @@ func _draw() -> void:
 		draw_string(font, Vector2(656, 89), "SUPER READY", HORIZONTAL_ALIGNMENT_LEFT, 446, 9, Color("2a210b"))
 	draw_string(font, Vector2(50, 111), fighters[0].fighter_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 19, p1_accent)
 	draw_string(font, Vector2(654, 111), fighters[1].fighter_name, HORIZONTAL_ALIGNMENT_RIGHT, 448, 19, p2_accent)
-	var timer_text := "%02d" % ceili(float(round_frames) / 60.0)
+	var timer_text := "∞" if game_mode == MODE_TRAINING else "%02d" % ceili(float(round_frames) / 60.0)
 	draw_string(font, Vector2(516, 76), timer_text, HORIZONTAL_ALIGNMENT_CENTER, 120, 36, Color("fff3c4"))
-	for i in wins[0]:
-		draw_circle(Vector2(68.0 + i * 24.0, 126.0), 8.0, Color("fff3c4"))
-	for i in wins[1]:
-		draw_circle(Vector2(1084.0 - i * 24.0, 126.0), 8.0, Color("fff3c4"))
+	if game_mode != MODE_TRAINING:
+		for i in wins[0]:
+			draw_circle(Vector2(68.0 + i * 24.0, 126.0), 8.0, Color("fff3c4"))
+		for i in wins[1]:
+			draw_circle(Vector2(1084.0 - i * 24.0, 126.0), 8.0, Color("fff3c4"))
 
 	for projectile in projectiles:
 		var projectile_color: Color = projectile.color
