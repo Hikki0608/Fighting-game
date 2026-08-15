@@ -11,6 +11,12 @@ const RenSpecialSpriteSheet := preload("res://assets/characters/ren_special_spri
 const RenReactionSpriteSheet := preload("res://assets/characters/ren_reaction_sprites_v1.png")
 const VelFighterTexture := preload("res://assets/characters/vel_fighter.png")
 const SCREEN_SIZE := Vector2(1152.0, 648.0)
+const ARENA_CENTER_X := Fighter.ARENA_WIDTH * 0.5
+const CAMERA_HALF_WIDTH := SCREEN_SIZE.x * 0.5
+const CAMERA_DEAD_ZONE := 28.0
+const CAMERA_FOLLOW_WEIGHT := 0.14
+const CAMERA_FIGHTER_MARGIN := 96.0
+const ROUND_START_DISTANCE := 492.0
 const ROUND_SECONDS := 99
 const ROUNDS_TO_WIN := 2
 const MODE_SOLO: StringName = &"solo"
@@ -163,7 +169,10 @@ var training_best_damage := 0
 var training_health_recovery_frames := 0
 var training_input_history: Array[String] = []
 var training_previous_axis := Vector2.ZERO
+var camera_center_x := ARENA_CENTER_X
+var camera_shake_offset := Vector2.ZERO
 
+var world_root: Node2D
 var announcement_label: Label
 var subtitle_label: Label
 var training_label: Label
@@ -195,6 +204,7 @@ var last_drawn_projectile_count := -1
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(Color("071018"))
 	cpu_controller = CpuControllerScript.new() as CpuController
+	_create_world_root()
 	_create_arena_background()
 	_create_fighters()
 	_create_ui()
@@ -203,6 +213,12 @@ func _ready() -> void:
 	_initialize_fullscreen_support()
 	_show_mode_menu()
 	_request_hud_redraw()
+
+
+func _create_world_root() -> void:
+	world_root = Node2D.new()
+	world_root.name = "World"
+	add_child(world_root)
 
 
 func _input(event: InputEvent) -> void:
@@ -247,29 +263,36 @@ func _toggle_fullscreen() -> void:
 
 
 func _create_arena_background() -> void:
-	var background := Sprite2D.new()
-	background.name = "ArenaBackground"
-	background.texture = ArenaBackgroundTexture
-	background.centered = false
-	background.position = Vector2.ZERO
-	background.z_index = -100
-	background.show_behind_parent = true
-	background.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	add_child(background)
+	# Keep the original artwork undistorted in the middle of the arena. Mirrored
+	# copies extend both sides so scrolling never exposes an empty area.
+	for tile_index in range(-1, 2):
+		var background := Sprite2D.new()
+		background.name = "ArenaBackground%d" % (tile_index + 2)
+		background.texture = ArenaBackgroundTexture
+		background.position = Vector2(
+			ARENA_CENTER_X + float(tile_index) * SCREEN_SIZE.x,
+			SCREEN_SIZE.y * 0.5
+		)
+		background.flip_h = tile_index != 0
+		background.z_index = -100
+		background.show_behind_parent = true
+		background.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		world_root.add_child(background)
+	_apply_world_transform()
 
 
 func _create_fighters() -> void:
 	var p1 := FighterScene.new() as Fighter
 	var p2 := FighterScene.new() as Fighter
-	add_child(p1)
-	add_child(p2)
+	world_root.add_child(p1)
+	world_root.add_child(p2)
 	var ren: Dictionary = CHARACTER_ROSTER[0]
 	var vel: Dictionary = CHARACTER_ROSTER[1]
 	p1.setup(
 		0,
 		ren.name,
 		ren.color,
-		Vector2(330.0, Fighter.GROUND_Y),
+		_round_spawn_position(0),
 		ren.texture,
 		ren.animation_textures
 	)
@@ -277,11 +300,16 @@ func _create_fighters() -> void:
 		1,
 		vel.name,
 		vel.color,
-		Vector2(822.0, Fighter.GROUND_Y),
+		_round_spawn_position(1),
 		vel.texture,
 		vel.animation_textures
 	)
 	fighters = [p1, p2]
+
+
+func _round_spawn_position(player_index: int) -> Vector2:
+	var side := -0.5 if player_index == 0 else 0.5
+	return Vector2(ARENA_CENTER_X + ROUND_START_DISTANCE * side, Fighter.GROUND_Y)
 
 
 func _create_ui() -> void:
@@ -606,7 +634,7 @@ func _make_character_card(index: int, card_position: Vector2) -> Button:
 func _show_character_select(selected_mode: StringName) -> void:
 	phase = &"character_select"
 	game_mode = selected_mode
-	position = Vector2.ZERO
+	_reset_camera()
 	menu_layer.visible = false
 	character_select_layer.visible = true
 	announcement_label.visible = false
@@ -784,6 +812,7 @@ func _physics_process(_delta: float) -> void:
 			round_frames = maxi(0, round_frames - 1)
 		for i in fighters.size():
 			fighters[i].simulate(fighters[1 - i], true)
+		_constrain_fighters_to_camera()
 		_spawn_pending_projectiles()
 		_update_projectiles()
 		_resolve_body_collision()
@@ -797,6 +826,7 @@ func _physics_process(_delta: float) -> void:
 		phase_frames -= 1
 		for i in fighters.size():
 			fighters[i].simulate(fighters[1 - i], false)
+		_constrain_fighters_to_camera()
 		if phase_frames <= 0:
 			round_number += 1
 			_start_round()
@@ -881,8 +911,8 @@ func _key_just_pressed(keycode: Key) -> bool:
 
 func _show_mode_menu() -> void:
 	phase = &"menu"
-	position = Vector2.ZERO
 	screen_shake = 0.0
+	_reset_camera()
 	global_hitstop = 0
 	hit_sparks.clear()
 	projectiles.clear()
@@ -968,8 +998,9 @@ func _start_round() -> void:
 	cpu_controller.reset()
 	fighters[0].facing = 1
 	fighters[1].facing = -1
-	fighters[0].reset_for_round(Vector2(330.0, Fighter.GROUND_Y))
-	fighters[1].reset_for_round(Vector2(822.0, Fighter.GROUND_Y))
+	fighters[0].reset_for_round(_round_spawn_position(0))
+	fighters[1].reset_for_round(_round_spawn_position(1))
+	_reset_camera()
 	if game_mode == MODE_TRAINING:
 		phase = &"fight"
 		phase_frames = 0
@@ -1008,13 +1039,13 @@ func _reset_training_position() -> void:
 	round_frames = ROUND_SECONDS * 60
 	global_hitstop = 0
 	screen_shake = 0.0
-	position = Vector2.ZERO
 	hit_sparks.clear()
 	projectiles.clear()
 	fighters[0].facing = 1
 	fighters[1].facing = -1
-	fighters[0].reset_for_round(Vector2(330.0, Fighter.GROUND_Y))
-	fighters[1].reset_for_round(Vector2(822.0, Fighter.GROUND_Y))
+	fighters[0].reset_for_round(_round_spawn_position(0))
+	fighters[1].reset_for_round(_round_spawn_position(1))
+	_reset_camera()
 	fighters[0].gain_meter(Fighter.MAX_METER)
 	fighters[1].gain_meter(Fighter.MAX_METER)
 	training_guard_armed = false
@@ -1391,11 +1422,70 @@ func _update_effects() -> void:
 		if hit_sparks[index].frames <= 0:
 			hit_sparks.remove_at(index)
 	screen_shake = move_toward(screen_shake, 0.0, 1.35)
-	position = Vector2(randf_range(-screen_shake, screen_shake), randf_range(-screen_shake * 0.4, screen_shake * 0.4)) if screen_shake > 0.1 else Vector2.ZERO
+	camera_shake_offset = Vector2(
+		randf_range(-screen_shake, screen_shake),
+		randf_range(-screen_shake * 0.4, screen_shake * 0.4)
+	) if screen_shake > 0.1 else Vector2.ZERO
+	_update_camera()
 	if combat_callout_frames > 0:
 		combat_callout_frames -= 1
 		if combat_callout_frames == 0 and phase == &"fight":
 			announcement_sub = ""
+
+
+func _reset_camera() -> void:
+	camera_center_x = ARENA_CENTER_X
+	camera_shake_offset = Vector2.ZERO
+	_apply_world_transform()
+
+
+func _update_camera() -> void:
+	if fighters.size() < 2:
+		_apply_world_transform()
+		return
+
+	var target_x := (fighters[0].position.x + fighters[1].position.x) * 0.5
+	target_x = clampf(target_x, CAMERA_HALF_WIDTH, Fighter.ARENA_WIDTH - CAMERA_HALF_WIDTH)
+	var target_delta := target_x - camera_center_x
+	var follow_target := camera_center_x
+	var target_is_stage_edge := (
+		is_equal_approx(target_x, CAMERA_HALF_WIDTH)
+		or is_equal_approx(target_x, Fighter.ARENA_WIDTH - CAMERA_HALF_WIDTH)
+	)
+	if target_is_stage_edge:
+		follow_target = target_x
+	elif absf(target_delta) > CAMERA_DEAD_ZONE:
+		follow_target = target_x - signf(target_delta) * CAMERA_DEAD_ZONE
+	if not is_equal_approx(follow_target, camera_center_x):
+		camera_center_x = lerpf(camera_center_x, follow_target, CAMERA_FOLLOW_WEIGHT)
+		if absf(follow_target - camera_center_x) < 0.25:
+			camera_center_x = follow_target
+	camera_center_x = clampf(
+		camera_center_x,
+		CAMERA_HALF_WIDTH,
+		Fighter.ARENA_WIDTH - CAMERA_HALF_WIDTH
+	)
+	_apply_world_transform()
+
+
+func _constrain_fighters_to_camera() -> void:
+	var body_half_width := Fighter.BODY_WIDTH * 0.5
+	var visible_left := maxf(
+		Fighter.ARENA_LEFT + body_half_width,
+		camera_center_x - CAMERA_HALF_WIDTH + CAMERA_FIGHTER_MARGIN
+	)
+	var visible_right := minf(
+		Fighter.ARENA_RIGHT - body_half_width,
+		camera_center_x + CAMERA_HALF_WIDTH - CAMERA_FIGHTER_MARGIN
+	)
+	for fighter in fighters:
+		fighter.position.x = clampf(fighter.position.x, visible_left, visible_right)
+
+
+func _apply_world_transform() -> void:
+	if world_root == null:
+		return
+	world_root.position = Vector2(CAMERA_HALF_WIDTH - camera_center_x, 0.0) + camera_shake_offset
 
 
 func _update_ui() -> void:
@@ -1530,6 +1620,11 @@ func _draw() -> void:
 		for i in wins[1]:
 			draw_circle(Vector2(1084.0 - i * 24.0, 126.0), 8.0, Color("fff3c4"))
 
+	# Projectiles and hit sparks use arena coordinates, so draw them with the
+	# same camera offset as the background and fighters. The HUD above stays
+	# anchored to the viewport.
+	var world_draw_offset := world_root.position if world_root != null else Vector2.ZERO
+	draw_set_transform(world_draw_offset, 0.0, Vector2.ONE)
 	for projectile in projectiles:
 		var projectile_color: Color = projectile.color
 		var projectile_position: Vector2 = projectile.position
@@ -1555,3 +1650,4 @@ func _draw() -> void:
 			var angle := TAU * float(ray) / 8.0
 			draw_line(spark.position, spark.position + Vector2.from_angle(angle) * radius, spark_color, 4.0)
 		draw_circle(spark.position, radius * 0.28, spark_color)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
