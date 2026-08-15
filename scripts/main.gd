@@ -16,6 +16,11 @@ const CAMERA_HALF_WIDTH := SCREEN_SIZE.x * 0.5
 const CAMERA_DEAD_ZONE := 28.0
 const CAMERA_FOLLOW_WEIGHT := 0.14
 const CAMERA_FIGHTER_MARGIN := Fighter.VISUAL_SIZE * 0.5 + 8.0
+const CAMERA_MIN_ZOOM := 1.0
+const CAMERA_MAX_ZOOM := 1.14
+const CAMERA_ZOOM_NEAR_DISTANCE := 300.0
+const CAMERA_ZOOM_FAR_DISTANCE := 820.0
+const CAMERA_ZOOM_FOLLOW_WEIGHT := 0.08
 const HITSTOP_TIME_SCALE := 0.8
 const ROUND_START_DISTANCE := 492.0
 const ROUND_SECONDS := 99
@@ -171,6 +176,7 @@ var training_health_recovery_frames := 0
 var training_input_history: Array[String] = []
 var training_previous_axis := Vector2.ZERO
 var camera_center_x := ARENA_CENTER_X
+var camera_zoom := CAMERA_MIN_ZOOM
 var camera_shake_offset := Vector2.ZERO
 
 var world_root: Node2D
@@ -1001,7 +1007,7 @@ func _start_round() -> void:
 	fighters[1].facing = -1
 	fighters[0].reset_for_round(_round_spawn_position(0))
 	fighters[1].reset_for_round(_round_spawn_position(1))
-	_reset_camera()
+	_reset_camera(true)
 	if game_mode == MODE_TRAINING:
 		phase = &"fight"
 		phase_frames = 0
@@ -1046,7 +1052,7 @@ func _reset_training_position() -> void:
 	fighters[1].facing = -1
 	fighters[0].reset_for_round(_round_spawn_position(0))
 	fighters[1].reset_for_round(_round_spawn_position(1))
-	_reset_camera()
+	_reset_camera(true)
 	fighters[0].gain_meter(Fighter.MAX_METER)
 	fighters[1].gain_meter(Fighter.MAX_METER)
 	training_guard_armed = false
@@ -1449,10 +1455,25 @@ func _update_effects() -> void:
 			announcement_sub = ""
 
 
-func _reset_camera() -> void:
+func _reset_camera(use_battle_zoom := false) -> void:
 	camera_center_x = ARENA_CENTER_X
+	camera_zoom = _target_camera_zoom() if use_battle_zoom else CAMERA_MIN_ZOOM
 	camera_shake_offset = Vector2.ZERO
 	_apply_world_transform()
+
+
+func _target_camera_zoom() -> float:
+	if fighters.size() < 2:
+		return CAMERA_MIN_ZOOM
+	var fighter_distance := absf(fighters[1].position.x - fighters[0].position.x)
+	var distance_ratio := clampf(
+		(fighter_distance - CAMERA_ZOOM_NEAR_DISTANCE)
+		/ (CAMERA_ZOOM_FAR_DISTANCE - CAMERA_ZOOM_NEAR_DISTANCE),
+		0.0,
+		1.0
+	)
+	var eased_distance := distance_ratio * distance_ratio * (3.0 - 2.0 * distance_ratio)
+	return lerpf(CAMERA_MAX_ZOOM, CAMERA_MIN_ZOOM, eased_distance)
 
 
 func _update_camera() -> void:
@@ -1460,39 +1481,48 @@ func _update_camera() -> void:
 		_apply_world_transform()
 		return
 
+	var target_zoom := _target_camera_zoom()
+	camera_zoom = lerpf(camera_zoom, target_zoom, CAMERA_ZOOM_FOLLOW_WEIGHT)
+	if absf(target_zoom - camera_zoom) < 0.0005:
+		camera_zoom = target_zoom
+
+	var visible_half_width := CAMERA_HALF_WIDTH / camera_zoom
 	var target_x := (fighters[0].position.x + fighters[1].position.x) * 0.5
-	target_x = clampf(target_x, CAMERA_HALF_WIDTH, Fighter.ARENA_WIDTH - CAMERA_HALF_WIDTH)
+	target_x = clampf(target_x, visible_half_width, Fighter.ARENA_WIDTH - visible_half_width)
 	var target_delta := target_x - camera_center_x
 	var follow_target := camera_center_x
+	var camera_dead_zone := CAMERA_DEAD_ZONE / camera_zoom
 	var target_is_stage_edge := (
-		is_equal_approx(target_x, CAMERA_HALF_WIDTH)
-		or is_equal_approx(target_x, Fighter.ARENA_WIDTH - CAMERA_HALF_WIDTH)
+		is_equal_approx(target_x, visible_half_width)
+		or is_equal_approx(target_x, Fighter.ARENA_WIDTH - visible_half_width)
 	)
 	if target_is_stage_edge:
 		follow_target = target_x
-	elif absf(target_delta) > CAMERA_DEAD_ZONE:
-		follow_target = target_x - signf(target_delta) * CAMERA_DEAD_ZONE
+	elif absf(target_delta) > camera_dead_zone:
+		follow_target = target_x - signf(target_delta) * camera_dead_zone
 	if not is_equal_approx(follow_target, camera_center_x):
 		camera_center_x = lerpf(camera_center_x, follow_target, CAMERA_FOLLOW_WEIGHT)
 		if absf(follow_target - camera_center_x) < 0.25:
 			camera_center_x = follow_target
 	camera_center_x = clampf(
 		camera_center_x,
-		CAMERA_HALF_WIDTH,
-		Fighter.ARENA_WIDTH - CAMERA_HALF_WIDTH
+		visible_half_width,
+		Fighter.ARENA_WIDTH - visible_half_width
 	)
 	_apply_world_transform()
 
 
 func _constrain_fighters_to_camera() -> void:
 	var body_half_width := Fighter.BODY_WIDTH * 0.5
+	var visible_half_width := CAMERA_HALF_WIDTH / camera_zoom
+	var fighter_margin := CAMERA_FIGHTER_MARGIN / camera_zoom
 	var visible_left := maxf(
 		Fighter.ARENA_LEFT + body_half_width,
-		camera_center_x - CAMERA_HALF_WIDTH + CAMERA_FIGHTER_MARGIN
+		camera_center_x - visible_half_width + fighter_margin
 	)
 	var visible_right := minf(
 		Fighter.ARENA_RIGHT - body_half_width,
-		camera_center_x + CAMERA_HALF_WIDTH - CAMERA_FIGHTER_MARGIN
+		camera_center_x + visible_half_width - fighter_margin
 	)
 	for fighter in fighters:
 		fighter.position.x = clampf(fighter.position.x, visible_left, visible_right)
@@ -1501,7 +1531,10 @@ func _constrain_fighters_to_camera() -> void:
 func _apply_world_transform() -> void:
 	if world_root == null:
 		return
-	world_root.position = Vector2(CAMERA_HALF_WIDTH - camera_center_x, 0.0) + camera_shake_offset
+	world_root.scale = Vector2.ONE * camera_zoom
+	var screen_focus := Vector2(CAMERA_HALF_WIDTH, Fighter.GROUND_Y)
+	var world_focus := Vector2(camera_center_x, Fighter.GROUND_Y)
+	world_root.position = screen_focus - world_focus * camera_zoom + camera_shake_offset
 
 
 func _update_ui() -> void:
@@ -1637,10 +1670,11 @@ func _draw() -> void:
 			draw_circle(Vector2(1084.0 - i * 24.0, 126.0), 8.0, Color("fff3c4"))
 
 	# Projectiles and hit sparks use arena coordinates, so draw them with the
-	# same camera offset as the background and fighters. The HUD above stays
+	# same camera transform as the background and fighters. The HUD above stays
 	# anchored to the viewport.
 	var world_draw_offset := world_root.position if world_root != null else Vector2.ZERO
-	draw_set_transform(world_draw_offset, 0.0, Vector2.ONE)
+	var world_draw_scale := world_root.scale if world_root != null else Vector2.ONE
+	draw_set_transform(world_draw_offset, 0.0, world_draw_scale)
 	for projectile in projectiles:
 		var projectile_color: Color = projectile.color
 		var projectile_position: Vector2 = projectile.position
