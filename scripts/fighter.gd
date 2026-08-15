@@ -8,10 +8,14 @@ const ARENA_RIGHT := ARENA_WIDTH - 76.0
 const GRAVITY := 2350.0
 const WALK_SPEED := 275.0
 const JUMP_SPEED := -850.0
-const BODY_WIDTH := 58.0
-const BODY_HEIGHT := 126.0
-const CROUCH_HEIGHT := 82.0
-const VISUAL_SIZE := 176.0
+const BASE_VISUAL_SIZE := 176.0
+const VISUAL_SIZE := 208.0
+const VISUAL_COLLISION_SCALE := VISUAL_SIZE / BASE_VISUAL_SIZE
+const BODY_WIDTH := 58.0 * VISUAL_COLLISION_SCALE
+const HURTBOX_WIDTH := VISUAL_SIZE * 0.48
+const HURTBOX_HEIGHT := VISUAL_SIZE - 24.0
+const CROUCH_HURTBOX_WIDTH := VISUAL_SIZE * 0.52
+const CROUCH_HURTBOX_HEIGHT := VISUAL_SIZE * 0.64
 const SPRITE_SHEET_CELL_SIZE := 256.0
 const SPRITE_DRAW_OFFSET_Y := 8.0
 const REN_ANIMATION_BASIC := 0
@@ -758,20 +762,29 @@ func attack_rect() -> Rect2:
 	var data := current_attack()
 	if data.is_empty():
 		return Rect2()
-	var attack_range: float = data.range
-	var attack_height: float = data.height
+	var attack_range: float = float(data.range) * VISUAL_COLLISION_SCALE
+	var attack_height: float = float(data.height) * VISUAL_COLLISION_SCALE
 	var x := position.x + BODY_WIDTH * 0.32 if facing > 0 else position.x - BODY_WIDTH * 0.32 - attack_range
-	var bottom_offset: float = float(data.get("bottom_offset", 22.0))
+	var bottom_offset: float = float(data.get("bottom_offset", 22.0)) * VISUAL_COLLISION_SCALE
 	var y := position.y - attack_height - bottom_offset
 	return Rect2(x, y, attack_range, attack_height)
 
 
 func hurt_rect() -> Rect2:
 	var crouching := state == &"crouch" or state == &"crouch_light" or state == &"crouch_heavy"
-	var height := CROUCH_HEIGHT if crouching else BODY_HEIGHT
+	var height := CROUCH_HURTBOX_HEIGHT if crouching else HURTBOX_HEIGHT
+	var width := CROUCH_HURTBOX_WIDTH if crouching else HURTBOX_WIDTH
+	var center_x := position.x
 	if state == &"knockdown":
-		height = 44.0
-	return Rect2(position.x - BODY_WIDTH * 0.5, position.y - height, BODY_WIDTH, height)
+		var fall_progress := 1.0
+		if state_frame <= 14:
+			fall_progress = clampf(float(state_frame) / 14.0, 0.0, 1.0)
+		elif state_frame > 35:
+			fall_progress = 1.0 - clampf(float(state_frame - 35) / 13.0, 0.0, 1.0)
+		width = lerpf(HURTBOX_WIDTH, HURTBOX_HEIGHT, fall_progress)
+		height = lerpf(HURTBOX_HEIGHT, HURTBOX_WIDTH, fall_progress)
+		center_x -= float(facing) * 42.0 * fall_progress
+	return Rect2(center_x - width * 0.5, position.y - height, width, height)
 
 
 func receive_attack(data: Dictionary, attacker_x: float, forced_push_direction := 0.0) -> Dictionary:
@@ -1448,7 +1461,7 @@ func _draw() -> void:
 	var shadow_y := GROUND_Y - position.y - 2.0
 	var shadow_scale := clampf(1.0 - absf(GROUND_Y - position.y) / 420.0, 0.48, 1.0)
 	draw_set_transform(Vector2(0, shadow_y), 0.0, Vector2(1.45 * shadow_scale, 0.30 * shadow_scale))
-	draw_circle(Vector2.ZERO, 30.0, Color(0.0, 0.0, 0.0, 0.28))
+	draw_circle(Vector2.ZERO, 30.0 * VISUAL_COLLISION_SCALE, Color(0.0, 0.0, 0.0, 0.28))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	_draw_motion_accents()
@@ -1473,7 +1486,9 @@ func _draw() -> void:
 		_draw_fallback_fighter()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE * VISUAL_COLLISION_SCALE)
 	_draw_attack_effects()
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	if state == &"blockstun":
 		var guard_points := PackedVector2Array()
