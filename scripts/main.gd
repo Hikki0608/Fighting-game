@@ -15,7 +15,8 @@ const ARENA_CENTER_X := Fighter.ARENA_WIDTH * 0.5
 const CAMERA_HALF_WIDTH := SCREEN_SIZE.x * 0.5
 const CAMERA_DEAD_ZONE := 28.0
 const CAMERA_FOLLOW_WEIGHT := 0.14
-const CAMERA_FIGHTER_MARGIN := 96.0
+const CAMERA_FIGHTER_MARGIN := Fighter.VISUAL_SIZE * 0.5 + 8.0
+const HITSTOP_TIME_SCALE := 0.8
 const ROUND_START_DISTANCE := 492.0
 const ROUND_SECONDS := 99
 const ROUNDS_TO_WIN := 2
@@ -1273,8 +1274,17 @@ func _resolve_body_collision() -> void:
 	var direction := signf(delta_x) if absf(delta_x) > 0.01 else 1.0
 	fighters[0].position.x -= overlap * 0.5 * direction
 	fighters[1].position.x += overlap * 0.5 * direction
-	fighters[0].position.x = clampf(fighters[0].position.x, Fighter.ARENA_LEFT + 29.0, Fighter.ARENA_RIGHT - 29.0)
-	fighters[1].position.x = clampf(fighters[1].position.x, Fighter.ARENA_LEFT + 29.0, Fighter.ARENA_RIGHT - 29.0)
+	var body_half_width := Fighter.BODY_WIDTH * 0.5
+	fighters[0].position.x = clampf(
+		fighters[0].position.x,
+		Fighter.ARENA_LEFT + body_half_width,
+		Fighter.ARENA_RIGHT - body_half_width
+	)
+	fighters[1].position.x = clampf(
+		fighters[1].position.x,
+		Fighter.ARENA_LEFT + body_half_width,
+		Fighter.ARENA_RIGHT - body_half_width
+	)
 
 
 func _resolve_attacks() -> void:
@@ -1352,6 +1362,12 @@ func _resolve_projectiles() -> void:
 			return
 
 
+func _scaled_hitstop_frames(base_frames: int) -> int:
+	if base_frames <= 0:
+		return 0
+	return maxi(1, roundi(float(base_frames) * HITSTOP_TIME_SCALE))
+
+
 func _apply_attack_hit(
 	attacker: Fighter,
 	defender: Fighter,
@@ -1366,7 +1382,7 @@ func _apply_attack_hit(
 	var meter_gain := int(attack_data.get("meter_block", 0)) if result.blocked else int(attack_data.get("meter_hit", 0))
 	attacker.gain_meter(meter_gain)
 	defender.gain_meter(3 if result.blocked else 6)
-	global_hitstop = result.hitstop
+	global_hitstop = _scaled_hitstop_frames(int(result.hitstop))
 	screen_shake = 9.0 if bool(attack_data.get("super", false)) else (8.0 if not result.blocked else 3.0)
 	hit_sparks.append({
 		"position": spark_position,
