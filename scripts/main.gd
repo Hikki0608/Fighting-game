@@ -364,9 +364,9 @@ func _create_ui() -> void:
 	add_child(mode_label)
 
 	training_label = Label.new()
-	training_label.position = Vector2(24.0, 326.0)
-	training_label.size = Vector2(560.0, 116.0)
-	training_label.add_theme_font_size_override("font_size", 16)
+	training_label.position = Vector2(18.0, 290.0)
+	training_label.size = Vector2(480.0, 98.0)
+	training_label.add_theme_font_size_override("font_size", 13)
 	training_label.add_theme_color_override("font_color", Color("d9f7ff"))
 	training_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
 	training_label.add_theme_constant_override("shadow_offset_x", 2)
@@ -375,9 +375,9 @@ func _create_ui() -> void:
 	add_child(training_label)
 
 	training_hud_label = Label.new()
-	training_hud_label.position = Vector2(24.0, 132.0)
-	training_hud_label.size = Vector2(376.0, 180.0)
-	training_hud_label.add_theme_font_size_override("font_size", 16)
+	training_hud_label.position = Vector2(18.0, 128.0)
+	training_hud_label.size = Vector2(324.0, 146.0)
+	training_hud_label.add_theme_font_size_override("font_size", 13)
 	training_hud_label.add_theme_color_override("font_color", Color("d9f7ff"))
 	training_hud_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
 	training_hud_label.add_theme_constant_override("shadow_offset_x", 1)
@@ -387,10 +387,10 @@ func _create_ui() -> void:
 	add_child(training_hud_label)
 
 	training_input_label = Label.new()
-	training_input_label.position = Vector2(816.0, 132.0)
-	training_input_label.size = Vector2(312.0, 260.0)
+	training_input_label.position = Vector2(890.0, 128.0)
+	training_input_label.size = Vector2(244.0, 194.0)
 	training_input_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	training_input_label.add_theme_font_size_override("font_size", 16)
+	training_input_label.add_theme_font_size_override("font_size", 13)
 	training_input_label.add_theme_color_override("font_color", Color("d9f7ff"))
 	training_input_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
 	training_input_label.add_theme_constant_override("shadow_offset_x", 1)
@@ -764,12 +764,12 @@ func _make_training_panel_style(accent: Color) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.025, 0.065, 0.085, 0.88)
 	style.border_color = Color(accent, 0.72)
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(6)
-	style.content_margin_left = 14.0
-	style.content_margin_right = 14.0
-	style.content_margin_top = 10.0
-	style.content_margin_bottom = 10.0
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(5)
+	style.content_margin_left = 10.0
+	style.content_margin_right = 10.0
+	style.content_margin_top = 8.0
+	style.content_margin_bottom = 8.0
 	return style
 
 
