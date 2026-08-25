@@ -25,6 +25,7 @@ const REN_ANIMATION_SPECIAL := 3
 const REN_ANIMATION_REACTION := 4
 const MAX_METER := 100
 const INPUT_BUFFER_FRAMES := 7
+const SUPER_CHORD_BUFFER_FRAMES := 5
 const AMBIENT_MOTION_SAMPLE_FRAMES := 2
 
 const ATTACKS := {
@@ -220,6 +221,10 @@ var button_buffer := {
 	"special": 0,
 	"throw": 0
 }
+var super_chord_buffer := {
+	"light": 0,
+	"heavy": 0
+}
 var input_history: Array[Vector2] = []
 var debug_boxes := false
 var combo_received := 0
@@ -335,6 +340,8 @@ func reset_for_round(spawn_position: Vector2) -> void:
 	}
 	for button_name in button_buffer:
 		button_buffer[button_name] = 0
+	for button_name in super_chord_buffer:
+		super_chord_buffer[button_name] = 0
 	input_history.clear()
 	_invalidate_visual_cache()
 	_queue_visual_redraw_if_needed()
@@ -382,6 +389,8 @@ func clear_input() -> void:
 func clear_action_buffer() -> void:
 	for button_name in button_buffer:
 		button_buffer[button_name] = 0
+	for button_name in super_chord_buffer:
+		super_chord_buffer[button_name] = 0
 
 
 func _commit_input(raw_axis: Vector2, buttons: Dictionary) -> void:
@@ -397,6 +406,8 @@ func _commit_input(raw_axis: Vector2, buttons: Dictionary) -> void:
 		pressed[button_name] = just_pressed
 		if just_pressed:
 			button_buffer[button_name] = INPUT_BUFFER_FRAMES
+			if super_chord_buffer.has(button_name):
+				super_chord_buffer[button_name] = SUPER_CHORD_BUFFER_FRAMES
 		previous_buttons[button_name] = buttons[button_name]
 		committed_buttons[button_name] = buttons[button_name]
 	intent.axis = axis
@@ -419,9 +430,20 @@ func _consume_button(button_name: String) -> void:
 	button_buffer[button_name] = 0
 
 
+func _is_super_chord_button_buffered(button_name: String) -> bool:
+	return int(super_chord_buffer.get(button_name, 0)) > 0
+
+
+func _consume_super_chord() -> void:
+	for button_name in super_chord_buffer:
+		super_chord_buffer[button_name] = 0
+
+
 func _tick_input_buffer() -> void:
 	for button_name in button_buffer:
 		button_buffer[button_name] = maxi(0, int(button_buffer[button_name]) - 1)
+	for button_name in super_chord_buffer:
+		super_chord_buffer[button_name] = maxi(0, int(super_chord_buffer[button_name]) - 1)
 
 
 func simulate(opponent: Fighter, accepting_input: bool) -> void:
@@ -512,12 +534,13 @@ func _step_neutral(opponent: Fighter) -> void:
 
 
 func _try_start_super() -> bool:
-	if not _is_button_buffered("light") or not _is_button_buffered("heavy"):
+	if not _is_super_chord_button_buffered("light") or not _is_super_chord_button_buffered("heavy"):
 		return false
 	if meter < MAX_METER:
 		return false
 	_consume_button("light")
 	_consume_button("heavy")
+	_consume_super_chord()
 	spend_meter(MAX_METER)
 	change_state(&"ren_super" if character_id == &"ren" else &"vel_super")
 	return true
@@ -595,6 +618,8 @@ func _step_attack() -> void:
 
 func _try_attack_cancel() -> bool:
 	if not attack_has_connected:
+		if _can_correct_normal_to_super() and _try_start_super():
+			return true
 		return false
 	if not bool(current_attack().get("super", false)) and _try_start_super():
 		return true
@@ -609,6 +634,12 @@ func _try_attack_cancel() -> bool:
 			_start_character_special()
 			return true
 	return false
+
+
+func _can_correct_normal_to_super() -> bool:
+	if state_frame >= SUPER_CHORD_BUFFER_FRAMES:
+		return false
+	return state in [&"light", &"crouch_light", &"heavy", &"forward_heavy", &"crouch_heavy"]
 
 
 func _step_vel_shadow() -> void:
