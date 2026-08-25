@@ -1429,15 +1429,6 @@ func _draw_motion_accents() -> void:
 			var walk_dust := Color(Color("c8b98f"), footfall * 0.2)
 			draw_circle(Vector2(foot_x, -2.0), 3.0 + footfall * 3.0, walk_dust)
 
-	if state == &"jump" and absf(velocity.y) > 260.0:
-		var streak_alpha := clampf((absf(velocity.y) - 260.0) / 650.0, 0.0, 0.22)
-		var streak_direction := -signf(velocity.y)
-		for streak in 3:
-			var streak_x := -24.0 + float(streak) * 24.0
-			var streak_start := Vector2(streak_x, -24.0 + streak_direction * 8.0)
-			var streak_end := streak_start + Vector2(0.0, streak_direction * 20.0)
-			draw_line(streak_start, streak_end, Color(accent_color, streak_alpha), 2.0, true)
-
 	if state == &"hitstun" and state_frame <= 8:
 		var impact_alpha := 0.32 * (1.0 - float(state_frame) / 9.0)
 		for mark in 3:
@@ -1523,10 +1514,6 @@ func _draw() -> void:
 		_draw_fallback_fighter()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE * VISUAL_COLLISION_SCALE)
-	_draw_attack_effects()
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
 	if state == &"blockstun":
 		var guard_points := PackedVector2Array()
 		for step in 13:
@@ -1555,96 +1542,3 @@ func _draw_fallback_fighter() -> void:
 	draw_arc(Vector2(0.0, -122.0), 22.0, 0.0, TAU, 24, accent_color, 3.0)
 	draw_line(Vector2(-12.0, -22.0), Vector2(-21.0, 0.0), accent_color, 10.0)
 	draw_line(Vector2(12.0, -22.0), Vector2(21.0, 0.0), accent_color, 10.0)
-
-
-func _draw_attack_effects() -> void:
-	if not is_attacking():
-		return
-
-	var data := current_attack()
-	var active := state_frame > int(data.startup) and state_frame <= int(data.startup + data.active)
-	var effect_color := body_color.lightened(0.55)
-	effect_color.a = 0.9 if active else 0.38
-	var attack_progress := clampf(
-		float(state_frame) / maxf(1.0, float(data.startup + data.active)),
-		0.0,
-		1.0
-	)
-	var effect: StringName = data.get("effect", &"arc")
-
-	if effect == &"projectile_cast":
-		var charge_center := Vector2(facing * 42.0, -80.0)
-		var charge_radius := 7.0 + 14.0 * attack_progress
-		draw_circle(charge_center, charge_radius, Color(effect_color, 0.18))
-		draw_arc(charge_center, charge_radius, 0.0, TAU, 24, effect_color, 4.0, true)
-		return
-
-	if effect == &"energy":
-		var energy_center := Vector2(facing * (46.0 + attack_progress * 26.0), -78.0)
-		var energy_radius := 14.0 + 12.0 * attack_progress
-		draw_circle(energy_center, energy_radius, Color(effect_color, 0.2 if active else 0.1))
-		draw_arc(energy_center, energy_radius, 0.0, TAU, 24, effect_color, 5.0, true)
-		draw_arc(energy_center, energy_radius + 9.0, -1.0, 1.8, 16, Color("fff3c4"), 2.0, true)
-		return
-
-	if effect == &"throw":
-		var throw_direction := -facing if throw_backwards else facing
-		var grab_center := Vector2(throw_direction * 47.0, -76.0)
-		draw_arc(grab_center, 22.0 + attack_progress * 8.0, -1.0, 2.1, 18, effect_color, 4.0, true)
-		return
-
-	if effect == &"jab" or effect == &"air_jab":
-		var strike_y := -82.0 if effect == &"jab" else -74.0
-		var strike_start := Vector2(facing * 29.0, strike_y)
-		var strike_end := Vector2(facing * (52.0 + attack_progress * 34.0), strike_y - 8.0)
-		draw_line(strike_start, strike_end, effect_color, 5.0, true)
-		draw_circle(strike_end, 5.5, effect_color)
-		return
-
-	if effect == &"low":
-		var low_start := Vector2(facing * 18.0, -24.0)
-		var low_end := Vector2(facing * (56.0 + attack_progress * 24.0), -10.0)
-		draw_line(low_start, low_end, effect_color, 5.0, true)
-		draw_circle(low_end, 5.0, effect_color)
-		return
-
-	if effect == &"rise" or effect == &"claw_rise":
-		var rise_points := PackedVector2Array()
-		for step in 14:
-			var rise_t := float(step) / 13.0
-			rise_points.append(Vector2(facing * (24.0 + 48.0 * sin(rise_t * PI)), -18.0 - rise_t * 132.0))
-		var rise_color := Color("ff6d93") if effect == &"claw_rise" else effect_color
-		draw_polyline(rise_points, rise_color, 6.0, true)
-		return
-
-	if effect == &"dive" or effect == &"claw_dive":
-		var dive_color := Color("ff5f89") if effect == &"claw_dive" else effect_color
-		for trail in 3:
-			var trail_offset := Vector2(-facing * float(trail) * 8.0, -float(trail) * 8.0)
-			draw_line(Vector2(-facing * 18.0, -112.0) + trail_offset, Vector2(facing * 62.0, -20.0) + trail_offset, Color(dive_color, 0.78 - trail * 0.18), 5.0, true)
-		return
-
-	if effect == &"claw" or effect == &"pounce":
-		var claw_color := Color("ff5b85")
-		for slash in 3:
-			var slash_y := -96.0 + slash * 25.0
-			draw_line(Vector2(facing * 28.0, slash_y - 18.0), Vector2(facing * (82.0 + slash * 7.0), slash_y + 12.0), Color(claw_color, 0.86 - slash * 0.12), 5.0, true)
-		return
-
-	if effect == &"super_blue" or effect == &"super_red":
-		var super_color := Color("75ebff") if effect == &"super_blue" else Color("ff416f")
-		var super_reach := 74.0 + 50.0 * attack_progress
-		for streak in 4:
-			var streak_y := -112.0 + streak * 28.0
-			draw_line(Vector2(-facing * 18.0, streak_y), Vector2(facing * super_reach, streak_y - 18.0), Color(super_color, 0.88 - streak * 0.13), 7.0 - streak, true)
-		draw_arc(Vector2(facing * 52.0, -72.0), 42.0, -1.2, 1.3, 20, Color("fff3c4"), 4.0, true)
-		return
-
-	var arc_points := PackedVector2Array()
-	var arc_center_y := -50.0 if effect == &"air_arc" else -62.0
-	var arc_radius := 86.0 if effect == &"overhead" else (82.0 if effect == &"air_arc" else 74.0)
-	for step in 14:
-		var arc_t := float(step) / 13.0
-		var arc_angle := lerpf(-1.15, 0.48, arc_t)
-		arc_points.append(Vector2(cos(arc_angle) * arc_radius * facing, arc_center_y + sin(arc_angle) * arc_radius))
-	draw_polyline(arc_points, effect_color, 6.0, true)
