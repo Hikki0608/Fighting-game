@@ -2022,8 +2022,6 @@ func _draw() -> void:
 	for spark in hit_sparks:
 		var spark_color := Color("8defff") if spark.blocked else Color(spark.get("color", Color("fff19a")))
 		var radius := float(spark.frames) * 2.5
-		for ray in 8:
-			var angle := TAU * float(ray) / 8.0
-			draw_line(spark.position, spark.position + Vector2.from_angle(angle) * radius, spark_color, 4.0)
-		draw_circle(spark.position, radius * 0.28, spark_color)
+		draw_circle(spark.position, radius * 0.5, Color(spark_color, 0.16))
+		draw_circle(spark.position, radius * 0.24, spark_color)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
