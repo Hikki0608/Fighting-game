@@ -1482,11 +1482,6 @@ func _draw() -> void:
 		visual_rotation *= 0.2
 	visual_scale = _uniform_character_draw_scale(visual_scale)
 
-	if meter >= MAX_METER:
-		var aura_color := Color("74e8ff") if character_id == &"ren" else Color("ff557d")
-		draw_arc(Vector2(0.0, -88.0), 62.0, -2.7, -0.35, 24, Color(aura_color, 0.42), 3.0, true)
-		draw_arc(Vector2(0.0, -88.0), 69.0, 0.35, 2.7, 24, Color(aura_color, 0.28), 2.0, true)
-
 	_draw_motion_echoes(visual_offset, visual_rotation, visual_scale)
 	draw_set_transform(visual_offset, visual_rotation, visual_scale)
 	if not _draw_character_image(visual_modulate):
