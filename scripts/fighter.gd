@@ -1370,6 +1370,14 @@ func _visual_pose() -> Dictionary:
 	}
 
 
+func _uniform_character_draw_scale(suggested_scale: Vector2) -> Vector2:
+	# Motion poses may suggest squash and stretch, but changing that scale makes
+	# the fighter appear to grow or shrink between actions. Keep only the facing
+	# direction and render every frame at the canonical character magnification.
+	var horizontal_direction := -1.0 if suggested_scale.x < 0.0 else 1.0
+	return Vector2(horizontal_direction, 1.0)
+
+
 func _draw_motion_accents() -> void:
 	if landing_frames > 0:
 		var landing_strength := float(landing_frames) / 8.0
@@ -1449,9 +1457,8 @@ func _draw_motion_echoes(
 	for echo_index in range(echo_count, 0, -1):
 		var distance := 11.0 * float(echo_index)
 		var echo_offset := visual_offset + trail_direction * distance
-		var echo_scale := visual_scale * Vector2(1.0 + 0.012 * echo_index, 1.0 - 0.012 * echo_index)
 		var alpha := echo_alpha * (1.0 - float(echo_index - 1) / float(echo_count + 1))
-		draw_set_transform(echo_offset, visual_rotation, echo_scale)
+		draw_set_transform(echo_offset, visual_rotation, visual_scale)
 		_draw_character_image(Color(echo_color, alpha))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
@@ -1473,7 +1480,7 @@ func _draw() -> void:
 	if _animated_sprite_frame().x >= 0:
 		visual_offset *= 0.25
 		visual_rotation *= 0.2
-		visual_scale = Vector2(float(facing), 1.0).lerp(visual_scale, 0.2)
+	visual_scale = _uniform_character_draw_scale(visual_scale)
 
 	if meter >= MAX_METER:
 		var aura_color := Color("74e8ff") if character_id == &"ren" else Color("ff557d")
