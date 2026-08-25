@@ -2,6 +2,7 @@ extends Node2D
 
 const FighterScene := preload("res://scripts/fighter.gd")
 const CpuControllerScript := preload("res://scripts/cpu_controller.gd")
+const MenuBackdropScript := preload("res://scripts/menu_backdrop.gd")
 const ArenaBackgroundTexture := preload("res://assets/arena_background.svg")
 const RenFighterTexture := preload("res://assets/characters/ren_fighter.png")
 const RenBasicSpriteSheet := preload("res://assets/characters/ren_basic_sprites_v1.png")
@@ -28,6 +29,12 @@ const ROUNDS_TO_WIN := 2
 const MODE_SOLO: StringName = &"solo"
 const MODE_VERSUS: StringName = &"versus"
 const MODE_TRAINING: StringName = &"training"
+const MODE_MENU_DETAILS := [
+	"ENTER THE ARENA AGAINST A TACTICAL CPU",
+	"LOCAL DUEL  •  KEYBOARD + GAMEPAD",
+	"PRACTICE COMBOS WITH INFINITE RESOURCES"
+]
+const MODE_MENU_ACCENTS := [Color("2cccf4"), Color("f5d77a"), Color("ff4f86")]
 const TRAINING_GUARD_OFF := 0
 const TRAINING_GUARD_AFTER_HIT := 1
 const TRAINING_GUARD_ALWAYS := 2
@@ -187,6 +194,15 @@ var training_hud_label: Label
 var training_input_label: Label
 var mode_label: Label
 var menu_layer: CanvasLayer
+var menu_backdrop: Control
+var menu_title_label: Label
+var menu_selection_marker: Label
+var menu_mode_index_label: Label
+var menu_mode_description_label: Label
+var menu_detail_panel: Panel
+var menu_portraits: Array[TextureRect] = []
+var menu_portrait_base_positions: Array[Vector2] = []
+var menu_animation_time := 0.0
 var character_select_layer: CanvasLayer
 var solo_button: Button
 var versus_button: Button
@@ -389,66 +405,194 @@ func _create_mode_menu() -> void:
 	menu_layer.layer = 10
 	add_child(menu_layer)
 
-	var backdrop := ColorRect.new()
-	backdrop.position = Vector2.ZERO
-	backdrop.size = SCREEN_SIZE
-	backdrop.color = Color(0.015, 0.035, 0.055, 0.88)
-	menu_layer.add_child(backdrop)
+	menu_backdrop = MenuBackdropScript.new() as Control
+	menu_backdrop.position = Vector2.ZERO
+	menu_backdrop.size = SCREEN_SIZE
+	menu_layer.add_child(menu_backdrop)
 
-	var title := Label.new()
-	title.position = Vector2(226.0, 92.0)
-	title.size = Vector2(700.0, 86.0)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.text = "FRAMEBREAK"
-	title.add_theme_font_size_override("font_size", 64)
-	title.add_theme_color_override("font_color", Color("fff3c4"))
-	title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
-	title.add_theme_constant_override("shadow_offset_x", 5)
-	title.add_theme_constant_override("shadow_offset_y", 5)
-	menu_layer.add_child(title)
+	_add_menu_portrait(
+		RenFighterTexture,
+		Vector2(-52.0, 114.0),
+		Vector2(446.0, 522.0),
+		Color("2cccf4")
+	)
+	_add_menu_portrait(
+		VelFighterTexture,
+		Vector2(758.0, 114.0),
+		Vector2(446.0, 522.0),
+		Color("ff4f86")
+	)
+
+	var brand_kicker := Label.new()
+	brand_kicker.position = Vector2(376.0, 20.0)
+	brand_kicker.size = Vector2(400.0, 22.0)
+	brand_kicker.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	brand_kicker.text = "FB // GRAND ARENA SYSTEM"
+	brand_kicker.add_theme_font_size_override("font_size", 12)
+	brand_kicker.add_theme_color_override("font_color", Color("91ddea"))
+	brand_kicker.add_theme_constant_override("letter_spacing", 3)
+	menu_layer.add_child(brand_kicker)
+
+	menu_title_label = Label.new()
+	menu_title_label.position = Vector2(176.0, 39.0)
+	menu_title_label.size = Vector2(800.0, 64.0)
+	menu_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	menu_title_label.text = "FRAMEBREAK"
+	menu_title_label.add_theme_font_size_override("font_size", 54)
+	menu_title_label.add_theme_color_override("font_color", Color("fff3c4"))
+	menu_title_label.add_theme_color_override("font_outline_color", Color(0.02, 0.03, 0.04, 0.96))
+	menu_title_label.add_theme_constant_override("outline_size", 8)
+	menu_title_label.add_theme_color_override("font_shadow_color", Color("b87428", 0.55))
+	menu_title_label.add_theme_constant_override("shadow_offset_x", 0)
+	menu_title_label.add_theme_constant_override("shadow_offset_y", 5)
+	menu_layer.add_child(menu_title_label)
 
 	var subtitle := Label.new()
-	subtitle.position = Vector2(326.0, 174.0)
-	subtitle.size = Vector2(500.0, 42.0)
+	subtitle.position = Vector2(326.0, 103.0)
+	subtitle.size = Vector2(500.0, 24.0)
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	subtitle.text = "SELECT BATTLE MODE"
-	subtitle.add_theme_font_size_override("font_size", 22)
-	subtitle.add_theme_color_override("font_color", Color("91ddea"))
+	subtitle.text = "FIGHT BEYOND THE FRAME"
+	subtitle.add_theme_font_size_override("font_size", 13)
+	subtitle.add_theme_color_override("font_color", Color("d8edf1"))
+	subtitle.add_theme_constant_override("letter_spacing", 5)
 	menu_layer.add_child(subtitle)
 
+	_add_menu_rule(Vector2(132.0, 92.0), Vector2(290.0, 2.0), Color("2cccf4"))
+	_add_menu_rule(Vector2(730.0, 92.0), Vector2(290.0, 2.0), Color("ff4f86"))
+
+	var menu_panel := Panel.new()
+	menu_panel.position = Vector2(344.0, 150.0)
+	menu_panel.size = Vector2(464.0, 346.0)
+	menu_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	menu_panel.add_theme_stylebox_override("panel", _make_menu_panel_style())
+	menu_layer.add_child(menu_panel)
+
+	var section_label := Label.new()
+	section_label.position = Vector2(376.0, 163.0)
+	section_label.size = Vector2(400.0, 34.0)
+	section_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	section_label.text = "CHOOSE YOUR BATTLE"
+	section_label.add_theme_font_size_override("font_size", 20)
+	section_label.add_theme_color_override("font_color", Color("fff3c4"))
+	section_label.add_theme_constant_override("letter_spacing", 2)
+	menu_layer.add_child(section_label)
+
 	solo_button = _make_mode_button(
-		"1 PLAYER   •   VS CPU", Vector2(326.0, 220.0), Vector2(500.0, 58.0), 20
+		"01   SOLO BATTLE",
+		Vector2(366.0, 204.0),
+		Vector2(420.0, 62.0),
+		18,
+		true,
+		"VS CPU",
+		MODE_MENU_ACCENTS[0]
 	)
 	versus_button = _make_mode_button(
-		"2 PLAYERS   •   LOCAL VERSUS", Vector2(326.0, 294.0), Vector2(500.0, 58.0), 20
+		"02   VERSUS",
+		Vector2(366.0, 278.0),
+		Vector2(420.0, 62.0),
+		18,
+		true,
+		"LOCAL DUEL",
+		MODE_MENU_ACCENTS[1]
 	)
 	training_button = _make_mode_button(
-		"TRAINING   •   FREE PRACTICE", Vector2(326.0, 368.0), Vector2(500.0, 58.0), 20
+		"03   TRAINING",
+		Vector2(366.0, 352.0),
+		Vector2(420.0, 62.0),
+		18,
+		true,
+		"FREE PRACTICE",
+		MODE_MENU_ACCENTS[2]
 	)
 	fullscreen_button = _make_mode_button(
-		"FULLSCREEN   •   ALT + ENTER",
-		Vector2(426.0, 452.0),
-		Vector2(300.0, 52.0),
-		18,
-		false
+		"◇   FULLSCREEN   •   ALT + ENTER",
+		Vector2(446.0, 516.0),
+		Vector2(260.0, 42.0),
+		13,
+		false,
+		"",
+		Color("668e9a")
 	)
 	solo_button.pressed.connect(_start_solo_mode)
 	versus_button.pressed.connect(_start_versus_mode)
 	training_button.pressed.connect(_start_training_mode)
 	fullscreen_button.pressed.connect(_toggle_fullscreen)
+	solo_button.mouse_entered.connect(_on_mode_button_hovered.bind(0))
+	versus_button.mouse_entered.connect(_on_mode_button_hovered.bind(1))
+	training_button.mouse_entered.connect(_on_mode_button_hovered.bind(2))
 	fullscreen_button.tooltip_text = "Toggle fullscreen (Alt + Enter)"
 	menu_layer.add_child(solo_button)
 	menu_layer.add_child(versus_button)
 	menu_layer.add_child(training_button)
 	menu_layer.add_child(fullscreen_button)
 
+	menu_selection_marker = Label.new()
+	menu_selection_marker.position = Vector2(329.0, 204.0)
+	menu_selection_marker.size = Vector2(32.0, 62.0)
+	menu_selection_marker.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	menu_selection_marker.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	menu_selection_marker.text = "◆"
+	menu_selection_marker.add_theme_font_size_override("font_size", 22)
+	menu_selection_marker.add_theme_color_override("font_color", MODE_MENU_ACCENTS[0])
+	menu_selection_marker.add_theme_color_override("font_shadow_color", Color(MODE_MENU_ACCENTS[0], 0.75))
+	menu_selection_marker.add_theme_constant_override("shadow_offset_x", 0)
+	menu_selection_marker.add_theme_constant_override("shadow_offset_y", 0)
+	menu_layer.add_child(menu_selection_marker)
+
+	menu_detail_panel = Panel.new()
+	menu_detail_panel.position = Vector2(366.0, 428.0)
+	menu_detail_panel.size = Vector2(420.0, 50.0)
+	menu_detail_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	menu_detail_panel.add_theme_stylebox_override(
+		"panel",
+		_make_menu_detail_style(Color("2cccf4"))
+	)
+	menu_layer.add_child(menu_detail_panel)
+
+	menu_mode_index_label = Label.new()
+	menu_mode_index_label.position = Vector2(380.0, 438.0)
+	menu_mode_index_label.size = Vector2(72.0, 30.0)
+	menu_mode_index_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	menu_mode_index_label.text = "MODE 01"
+	menu_mode_index_label.add_theme_font_size_override("font_size", 11)
+	menu_mode_index_label.add_theme_color_override("font_color", Color("2cccf4"))
+	menu_layer.add_child(menu_mode_index_label)
+
+	menu_mode_description_label = Label.new()
+	menu_mode_description_label.position = Vector2(452.0, 438.0)
+	menu_mode_description_label.size = Vector2(320.0, 30.0)
+	menu_mode_description_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	menu_mode_description_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	menu_mode_description_label.text = MODE_MENU_DETAILS[0]
+	menu_mode_description_label.add_theme_font_size_override("font_size", 11)
+	menu_mode_description_label.add_theme_color_override("font_color", Color("c5dce2"))
+	menu_layer.add_child(menu_mode_description_label)
+
+	_add_menu_fighter_caption(
+		"REN",
+		"AZURE TACTICIAN",
+		Vector2(36.0, 528.0),
+		Vector2(280.0, 48.0),
+		Color("2cccf4"),
+		HORIZONTAL_ALIGNMENT_LEFT
+	)
+	_add_menu_fighter_caption(
+		"VEL",
+		"CRIMSON HUNTER",
+		Vector2(836.0, 528.0),
+		Vector2(280.0, 48.0),
+		Color("ff4f86"),
+		HORIZONTAL_ALIGNMENT_RIGHT
+	)
+
 	var hint := Label.new()
-	hint.position = Vector2(226.0, 525.0)
-	hint.size = Vector2(700.0, 70.0)
+	hint.position = Vector2(226.0, 576.0)
+	hint.size = Vector2(700.0, 44.0)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.text = "UP / DOWN OR W / S TO CHOOSE    •    ENTER TO START\nM: MODE SELECT    •    ALT + ENTER: FULLSCREEN"
-	hint.add_theme_font_size_override("font_size", 16)
-	hint.add_theme_color_override("font_color", Color("91acb7"))
+	hint.text = "↑ ↓  /  W S   NAVIGATE        ENTER   CONFIRM        ALT + ENTER   FULLSCREEN"
+	hint.add_theme_font_size_override("font_size", 12)
+	hint.add_theme_color_override("font_color", Color("8aa5af"))
+	hint.add_theme_constant_override("letter_spacing", 1)
 	menu_layer.add_child(hint)
 
 
@@ -457,22 +601,154 @@ func _make_mode_button(
 	button_position: Vector2,
 	button_size: Vector2 = Vector2(500.0, 68.0),
 	font_size: int = 22,
-	focusable: bool = true
+	focusable: bool = true,
+	badge_text: String = "",
+	accent: Color = Color("2cccf4")
 ) -> Button:
 	var button := Button.new()
 	button.position = button_position
 	button.size = button_size
 	button.text = button_text
+	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	button.focus_mode = Control.FOCUS_ALL if focusable else Control.FOCUS_NONE
 	button.add_theme_font_size_override("font_size", font_size)
 	button.add_theme_color_override("font_color", Color("d8f7ff"))
 	button.add_theme_color_override("font_hover_color", Color("fff3c4"))
 	button.add_theme_color_override("font_focus_color", Color("fff3c4"))
-	button.add_theme_stylebox_override("normal", _make_button_style(Color("102b35"), Color("2f6572"), 2))
-	button.add_theme_stylebox_override("hover", _make_button_style(Color("16404c"), Color("61d5e3"), 3))
-	button.add_theme_stylebox_override("pressed", _make_button_style(Color("1d4b57"), Color("fff3c4"), 3))
-	button.add_theme_stylebox_override("focus", _make_button_style(Color("153945"), Color("fff3c4"), 4))
+	button.add_theme_stylebox_override(
+		"normal",
+		_make_menu_button_style(Color(0.035, 0.085, 0.105, 0.94), Color(accent, 0.46), 1, accent)
+	)
+	button.add_theme_stylebox_override(
+		"hover",
+		_make_menu_button_style(Color(0.055, 0.14, 0.17, 0.98), Color(accent, 0.95), 2, accent)
+	)
+	button.add_theme_stylebox_override(
+		"pressed",
+		_make_menu_button_style(Color(0.085, 0.18, 0.20, 1.0), Color("fff3c4"), 2, accent)
+	)
+	button.add_theme_stylebox_override(
+		"focus",
+		_make_menu_button_style(Color(0.055, 0.125, 0.145, 1.0), Color("fff3c4"), 2, accent)
+	)
+
+	if not badge_text.is_empty():
+		var badge := Label.new()
+		badge.position = Vector2(button_size.x - 142.0, 0.0)
+		badge.size = Vector2(122.0, button_size.y)
+		badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		badge.text = badge_text
+		badge.add_theme_font_size_override("font_size", 11)
+		badge.add_theme_color_override("font_color", Color(accent, 0.92))
+		button.add_child(badge)
 	return button
+
+
+func _make_menu_button_style(
+	fill: Color,
+	border: Color,
+	border_width: int,
+	accent: Color
+) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = fill
+	style.border_color = border
+	style.set_border_width_all(border_width)
+	style.border_width_left = maxi(border_width, 5)
+	style.corner_radius_top_left = 5
+	style.corner_radius_bottom_left = 5
+	style.corner_radius_top_right = 10
+	style.corner_radius_bottom_right = 10
+	style.content_margin_left = 22.0
+	style.content_margin_right = 18.0
+	style.shadow_color = Color(accent, 0.12)
+	style.shadow_size = 7
+	style.shadow_offset = Vector2(0.0, 3.0)
+	return style
+
+
+func _make_menu_panel_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.015, 0.035, 0.05, 0.91)
+	style.border_color = Color("f5d77a", 0.44)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(12)
+	style.shadow_color = Color(0.0, 0.0, 0.0, 0.56)
+	style.shadow_size = 18
+	style.shadow_offset = Vector2(0.0, 8.0)
+	return style
+
+
+func _make_menu_detail_style(accent: Color) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.02, 0.055, 0.07, 0.92)
+	style.border_color = Color(accent, 0.32)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(5)
+	return style
+
+
+func _add_menu_portrait(
+	texture: Texture2D,
+	portrait_position: Vector2,
+	portrait_size: Vector2,
+	accent: Color
+) -> void:
+	var glow := TextureRect.new()
+	glow.position = portrait_position + Vector2(0.0, 4.0)
+	glow.size = portrait_size
+	glow.texture = texture
+	glow.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	glow.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	glow.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	glow.modulate = Color(accent, 0.16)
+	menu_layer.add_child(glow)
+
+	var portrait := TextureRect.new()
+	portrait.position = portrait_position
+	portrait.size = portrait_size
+	portrait.texture = texture
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	portrait.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	portrait.modulate = Color(1.0, 1.0, 1.0, 0.82)
+	menu_layer.add_child(portrait)
+	menu_portraits.append(portrait)
+	menu_portrait_base_positions.append(portrait_position)
+
+
+func _add_menu_rule(rule_position: Vector2, rule_size: Vector2, color: Color) -> void:
+	var rule := ColorRect.new()
+	rule.position = rule_position
+	rule.size = rule_size
+	rule.color = Color(color, 0.5)
+	rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	menu_layer.add_child(rule)
+
+
+func _add_menu_fighter_caption(
+	fighter_name: String,
+	fighter_title: String,
+	caption_position: Vector2,
+	caption_size: Vector2,
+	accent: Color,
+	alignment: HorizontalAlignment
+) -> void:
+	var caption := Label.new()
+	caption.position = caption_position
+	caption.size = caption_size
+	caption.horizontal_alignment = alignment
+	caption.text = "%s\n%s" % [fighter_name, fighter_title]
+	caption.add_theme_font_size_override("font_size", 13)
+	caption.add_theme_color_override("font_color", accent)
+	caption.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.9))
+	caption.add_theme_constant_override("shadow_offset_x", 2)
+	caption.add_theme_constant_override("shadow_offset_y", 2)
+	menu_layer.add_child(caption)
 
 
 func _make_button_style(fill: Color, border: Color, border_width: int) -> StyleBoxFlat:
@@ -776,9 +1052,11 @@ func _confirm_character_selection() -> void:
 	_start_match(game_mode)
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	_handle_system_input()
 	if phase == &"menu" or phase == &"character_select":
+		if phase == &"menu":
+			_update_menu_animation(delta)
 		_update_ui()
 		_request_hud_redraw()
 		return
@@ -942,13 +1220,61 @@ func _show_mode_menu() -> void:
 
 
 func _update_mode_selection() -> void:
-	match mode_selection:
-		0:
-			solo_button.grab_focus()
-		1:
-			versus_button.grab_focus()
-		_:
-			training_button.grab_focus()
+	var mode_buttons: Array[Button] = [solo_button, versus_button, training_button]
+	var selected_button := mode_buttons[mode_selection]
+	selected_button.grab_focus()
+	for index in mode_buttons.size():
+		mode_buttons[index].modulate = (
+			Color.WHITE if index == mode_selection else Color(0.68, 0.76, 0.80, 0.78)
+		)
+
+	var accent: Color = MODE_MENU_ACCENTS[mode_selection]
+	menu_selection_marker.position.y = selected_button.position.y
+	menu_selection_marker.add_theme_color_override("font_color", accent)
+	menu_selection_marker.add_theme_color_override("font_shadow_color", Color(accent, 0.78))
+	menu_mode_index_label.text = "MODE %02d" % (mode_selection + 1)
+	menu_mode_index_label.add_theme_color_override("font_color", accent)
+	menu_mode_description_label.text = MODE_MENU_DETAILS[mode_selection]
+	menu_detail_panel.add_theme_stylebox_override("panel", _make_menu_detail_style(accent))
+
+
+func _on_mode_button_hovered(index: int) -> void:
+	if phase != &"menu" or index == mode_selection:
+		return
+	mode_selection = index
+	_update_mode_selection()
+
+
+func _update_menu_animation(delta: float) -> void:
+	menu_animation_time = fmod(menu_animation_time + delta, 3600.0)
+	for index in menu_portraits.size():
+		var portrait := menu_portraits[index]
+		var base_position := menu_portrait_base_positions[index]
+		var phase_offset := float(index) * PI
+		portrait.position = base_position + Vector2(
+			sin(menu_animation_time * 0.55 + phase_offset) * 2.0,
+			sin(menu_animation_time * 0.82 + phase_offset) * 3.5
+		)
+		portrait.modulate = Color(
+			1.0,
+			1.0,
+			1.0,
+			0.79 + sin(menu_animation_time * 0.9 + phase_offset) * 0.035
+		)
+
+	menu_selection_marker.position.x = 329.0 + sin(menu_animation_time * 3.2) * 3.0
+	menu_selection_marker.modulate = Color(
+		1.0,
+		1.0,
+		1.0,
+		0.82 + sin(menu_animation_time * 4.2) * 0.18
+	)
+	menu_title_label.modulate = Color(
+		1.0,
+		1.0,
+		1.0,
+		0.96 + sin(menu_animation_time * 1.4) * 0.04
+	)
 
 
 func _start_solo_mode() -> void:
