@@ -27,6 +27,10 @@ const MAX_METER := 100
 const INPUT_BUFFER_FRAMES := 7
 const SUPER_CHORD_BUFFER_FRAMES := 5
 const AMBIENT_MOTION_SAMPLE_FRAMES := 2
+const KEYBOARD_LIGHT_KEY := KEY_J
+const KEYBOARD_HEAVY_KEY := KEY_K
+const KEYBOARD_SPECIAL_KEY := KEY_L
+const KEYBOARD_THROW_KEY := KEY_I
 
 const ATTACKS := {
 	&"light": {
@@ -355,10 +359,10 @@ func capture_input() -> void:
 	if player_id == 0:
 		axis.x = float(Input.is_physical_key_pressed(KEY_D)) - float(Input.is_physical_key_pressed(KEY_A))
 		axis.y = float(Input.is_physical_key_pressed(KEY_S)) - float(Input.is_physical_key_pressed(KEY_W))
-		buttons.light = Input.is_physical_key_pressed(KEY_F)
-		buttons.heavy = Input.is_physical_key_pressed(KEY_G)
-		buttons.special = Input.is_physical_key_pressed(KEY_H)
-		buttons.throw = Input.is_physical_key_pressed(KEY_R)
+		buttons.light = Input.is_physical_key_pressed(KEYBOARD_LIGHT_KEY)
+		buttons.heavy = Input.is_physical_key_pressed(KEYBOARD_HEAVY_KEY)
+		buttons.special = Input.is_physical_key_pressed(KEYBOARD_SPECIAL_KEY)
+		buttons.throw = Input.is_physical_key_pressed(KEYBOARD_THROW_KEY)
 
 	var joy_x := Input.get_joy_axis(player_id, JOY_AXIS_LEFT_X)
 	var joy_y := Input.get_joy_axis(player_id, JOY_AXIS_LEFT_Y)

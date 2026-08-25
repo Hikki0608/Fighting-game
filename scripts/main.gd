@@ -939,7 +939,7 @@ func _refresh_character_select() -> void:
 	if game_mode == MODE_SOLO:
 		character_selection[1] = (character_selection[0] + 1) % CHARACTER_ROSTER.size()
 		character_prompt_label.text = "PLAYER 1  -  CHOOSE YOUR FIGHTER"
-		character_hint_label.text = "A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / F: CONFIRM    ESC: BACK"
+		character_hint_label.text = "A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / J: CONFIRM    ESC: BACK"
 	elif game_mode == MODE_TRAINING:
 		character_prompt_label.text = (
 			"PLAYER 1  -  CHOOSE YOUR FIGHTER"
@@ -947,16 +947,16 @@ func _refresh_character_select() -> void:
 			else "TRAINING DUMMY  -  CHOOSE FIGHTER"
 		)
 		character_hint_label.text = (
-			"A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / F: CONFIRM    ESC: BACK"
+			"A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / J: CONFIRM    ESC: BACK"
 			if selecting_player == 0
-			else "A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / F: CONFIRM    ESC: BACK"
+			else "A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / J: CONFIRM    ESC: BACK"
 		)
 	else:
 		character_prompt_label.text = "PLAYER %d  -  CHOOSE YOUR FIGHTER" % (selecting_player + 1)
 		character_hint_label.text = (
-			"A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / F: CONFIRM    ESC: BACK"
+			"A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / J: CONFIRM    ESC: BACK"
 			if selecting_player == 0
-			else "A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / F: CONFIRM    ESC: BACK"
+			else "A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / J: CONFIRM    ESC: BACK"
 		)
 
 	var current_player_label := (
@@ -1013,7 +1013,7 @@ func _handle_character_select_input() -> void:
 	right_pressed = _key_just_pressed(KEY_D) or right_pressed
 	var confirm_pressed := _key_just_pressed(KEY_ENTER)
 	confirm_pressed = _key_just_pressed(KEY_SPACE) or confirm_pressed
-	confirm_pressed = _key_just_pressed(KEY_F) or confirm_pressed
+	confirm_pressed = _key_just_pressed(Fighter.KEYBOARD_LIGHT_KEY) or confirm_pressed
 
 	if left_pressed:
 		character_selection[selecting_player] = wrapi(
