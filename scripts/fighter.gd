@@ -2,7 +2,7 @@ class_name Fighter
 extends Node2D
 
 const GROUND_Y := 558.0
-const ARENA_WIDTH := 2112.0
+const ARENA_WIDTH := 2016.0
 const ARENA_LEFT := 76.0
 const ARENA_RIGHT := ARENA_WIDTH - 76.0
 const GRAVITY := 2350.0
