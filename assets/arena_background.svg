@@ -1,12 +1,29 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1152" height="648" viewBox="0 0 1152 648">
   <defs>
     <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#101a32"/>
-      <stop offset="1" stop-color="#72443b"/>
+      <stop offset="0" stop-color="#091329"/>
+      <stop offset="0.56" stop-color="#2d263b"/>
+      <stop offset="1" stop-color="#a35b42"/>
     </linearGradient>
     <linearGradient id="sand" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#9a7955"/>
-      <stop offset="1" stop-color="#6f5843"/>
+      <stop offset="0" stop-color="#927353"/>
+      <stop offset="0.58" stop-color="#6e5540"/>
+      <stop offset="1" stop-color="#44352e"/>
+    </linearGradient>
+    <linearGradient id="royal-stone" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#b7a58c"/>
+      <stop offset="0.48" stop-color="#776b62"/>
+      <stop offset="1" stop-color="#4a4543"/>
+    </linearGradient>
+    <linearGradient id="gate-depth" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#151722"/>
+      <stop offset="1" stop-color="#070910"/>
+    </linearGradient>
+    <linearGradient id="royal-gold" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#6d4b23"/>
+      <stop offset="0.45" stop-color="#f4d78a"/>
+      <stop offset="0.7" stop-color="#b98237"/>
+      <stop offset="1" stop-color="#5a3d20"/>
     </linearGradient>
     <radialGradient id="sun-glow">
       <stop offset="0" stop-color="#f4bd69" stop-opacity="0.48"/>
@@ -15,6 +32,10 @@
     <radialGradient id="flame-glow">
       <stop offset="0" stop-color="#ff7a2f" stop-opacity="0.55"/>
       <stop offset="1" stop-color="#ff7a2f" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="horizon-glow">
+      <stop offset="0" stop-color="#ef9e62" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#ef9e62" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="vignette" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#000000" stop-opacity="0.12"/>
@@ -38,6 +59,29 @@
       <circle cx="0" cy="-68" r="22" fill="url(#flame-glow)"/>
       <path d="M-8-64L0-90L9-64L0-55Z" fill="#ff7a2f"/>
       <circle cx="0" cy="-68" r="5" fill="#ffe29a"/>
+    </g>
+    <g id="distant-tower">
+      <path d="M-28 78V8H28V78Z" fill="#171a27"/>
+      <path d="M-36 8H36L28-6H18L12-22H-12L-18-6H-28Z" fill="#202333"/>
+      <rect x="-7" y="20" width="14" height="24" rx="7" fill="#d99355" opacity="0.28"/>
+      <path d="M-22 78V58H22V78" fill="#10131e"/>
+    </g>
+    <g id="royal-column">
+      <path d="M-26 0H26L21 16H-21Z" fill="url(#royal-gold)"/>
+      <rect x="-19" y="16" width="38" height="138" fill="url(#royal-stone)"/>
+      <rect x="-10" y="20" width="7" height="130" fill="#ddd0bb" opacity="0.24"/>
+      <path d="M-24 154H24L30 174H-30Z" fill="url(#royal-gold)"/>
+    </g>
+    <g id="arena-statue">
+      <rect x="-30" y="84" width="60" height="22" rx="3" fill="#4b4748" stroke="#c2ad90" stroke-width="3"/>
+      <rect x="-23" y="70" width="46" height="16" fill="#67605d"/>
+      <circle cx="0" cy="0" r="13" fill="#8d8580" stroke="#c6b9a8" stroke-width="2"/>
+      <path d="M-17 18L0 10L17 18L23 66H-23Z" fill="#756e6b" stroke="#b6aa9a" stroke-width="2"/>
+      <path d="M-20 30L-39 57M20 30L39 57" stroke="#8d8580" stroke-width="11" stroke-linecap="round"/>
+      <path d="M0 17V66M-14 46H14" stroke="#d1b36e" stroke-width="4" opacity="0.72"/>
+      <ellipse cx="28" cy="46" rx="17" ry="25" fill="#4d4a4c" stroke="#c9a85d" stroke-width="3"/>
+      <line x1="-34" y1="-12" x2="-34" y2="79" stroke="#d0b574" stroke-width="5"/>
+      <path d="M-34-26L-43-7H-25Z" fill="#e3c477"/>
     </g>
     <g id="crowd-tile">
       <circle cx="8" cy="14" r="3.2" fill="#d5ad77"/>
@@ -97,14 +141,39 @@
 
   <rect width="1152" height="648" fill="#071018"/>
   <rect width="1152" height="168" fill="url(#sky)"/>
+  <ellipse cx="576" cy="146" rx="520" ry="118" fill="url(#horizon-glow)"/>
   <circle cx="930" cy="105" r="58" fill="url(#sun-glow)"/>
   <circle cx="930" cy="105" r="34" fill="#f4bd69"/>
+
+  <g fill="#d8c4bd" opacity="0.12">
+    <path d="M46 72C80 45 118 52 135 72C151 56 188 57 209 80C176 88 94 89 46 72Z"/>
+    <path d="M662 46C691 25 726 31 741 49C762 28 807 36 821 62C779 68 708 67 662 46Z"/>
+    <path d="M892 36C915 20 944 24 957 40C975 24 1008 29 1022 49C987 55 932 54 892 36Z"/>
+  </g>
+  <path d="M0 136L95 72L154 119L236 61L324 126L404 81L486 133L585 56L668 124L752 70L839 126L932 58L1025 121L1102 79L1152 117V168H0Z" fill="#171b2a" opacity="0.9"/>
+  <path d="M0 151L116 102L210 143L314 91L408 145L515 98L614 146L732 90L837 145L955 96L1078 143L1152 112V168H0Z" fill="#262638" opacity="0.78"/>
+  <g opacity="0.94">
+    <use xlink:href="#distant-tower" transform="translate(82 76) scale(.72)"/>
+    <use xlink:href="#distant-tower" transform="translate(222 91) scale(.58)"/>
+    <use xlink:href="#distant-tower" transform="translate(378 74) scale(.78)"/>
+    <use xlink:href="#distant-tower" transform="translate(576 59) scale(.92)"/>
+    <use xlink:href="#distant-tower" transform="translate(774 74) scale(.78)"/>
+    <use xlink:href="#distant-tower" transform="translate(930 91) scale(.58)"/>
+    <use xlink:href="#distant-tower" transform="translate(1070 76) scale(.72)"/>
+  </g>
+  <path d="M0 131H1152V145H0Z" fill="#252735"/>
+  <path d="M0 131H1152" stroke="#d8bb77" stroke-width="2" opacity="0.44"/>
 
   <rect x="0" y="138" width="1152" height="244" fill="#75675c"/>
   <rect x="0" y="130" width="1152" height="18" fill="#b6a184"/>
   <rect x="0" y="148" width="1152" height="8" fill="#493f3b"/>
   <rect x="0" y="306" width="1152" height="18" fill="#a58e73"/>
   <rect x="0" y="324" width="1152" height="8" fill="#493f3b"/>
+  <g fill="none" stroke="#d4c2a8" stroke-opacity="0.12" stroke-width="2">
+    <path d="M0 194H1152M0 244H1152M0 294H1152"/>
+    <path d="M72 156V194M192 194V244M312 156V194M432 194V244M552 156V194M672 194V244M792 156V194M912 194V244M1032 156V194"/>
+  </g>
+  <rect x="0" y="156" width="1152" height="150" fill="#1a1820" opacity="0.08"/>
 
   <use xlink:href="#upper-arch" transform="translate(48 172)"/>
   <use xlink:href="#upper-arch" transform="translate(144 172)"/>
@@ -135,6 +204,38 @@
   <use xlink:href="#lower-arch" transform="translate(1046 338)"/>
   <use xlink:href="#lower-arch" transform="translate(1124 338)"/>
 
+  <g id="grand-royal-gate">
+    <path d="M408 153L456 111H696L744 153V334H408Z" fill="#49474a" stroke="#d0b77d" stroke-width="4"/>
+    <path d="M436 142L474 102H678L716 142Z" fill="url(#royal-stone)" stroke="url(#royal-gold)" stroke-width="5"/>
+    <path d="M487 105L576 68L665 105Z" fill="#393944" stroke="#d4b86f" stroke-width="4"/>
+    <path d="M519 101L576 78L633 101Z" fill="#171a27"/>
+    <circle cx="576" cy="90" r="7" fill="#f1d27c"/>
+    <rect x="425" y="151" width="302" height="183" fill="url(#royal-stone)"/>
+    <path d="M472 327V230A104 104 0 0 1 680 230V327Z" fill="url(#gate-depth)" stroke="#d2b675" stroke-width="7"/>
+    <path d="M493 327V235A83 83 0 0 1 659 235V327Z" fill="#0d1019" stroke="#5d5144" stroke-width="4"/>
+    <path d="M576 154V327M493 279H659" stroke="#a8874d" stroke-width="4" opacity="0.62"/>
+    <path d="M506 327V244A70 70 0 0 1 576 174M646 327V244A70 70 0 0 0 576 174" fill="none" stroke="#272b38" stroke-width="10"/>
+    <g fill="#c2a55e" opacity="0.72">
+      <circle cx="526" cy="252" r="4"/><circle cx="626" cy="252" r="4"/>
+      <circle cx="526" cy="290" r="4"/><circle cx="626" cy="290" r="4"/>
+    </g>
+    <use xlink:href="#royal-column" transform="translate(449 147)"/>
+    <use xlink:href="#royal-column" transform="translate(703 147)"/>
+    <path d="M399 326H753V347H399Z" fill="url(#royal-gold)"/>
+    <path d="M417 347H735V360H417Z" fill="#373338" stroke="#a88b52" stroke-width="2"/>
+    <g transform="translate(389 204) scale(.82)">
+      <use xlink:href="#arena-statue"/>
+    </g>
+    <g transform="translate(763 204) scale(-.82 .82)">
+      <use xlink:href="#arena-statue"/>
+    </g>
+    <path d="M468 164H505V266L486 249L468 266Z" fill="#1f5f7b" stroke="#d5bd7b" stroke-width="3"/>
+    <path d="M647 164H684V266L666 249L647 266Z" fill="#8a304e" stroke="#d5bd7b" stroke-width="3"/>
+    <path d="M480 181L494 195L480 209M672 181L658 195L672 209" fill="none" stroke="#f2dfaa" stroke-width="4"/>
+    <use xlink:href="#torch" transform="translate(459 366) scale(.62)"/>
+    <use xlink:href="#torch" transform="translate(693 366) scale(.62)"/>
+  </g>
+
   <g transform="translate(116 154)">
     <line x1="-6" y1="0" x2="58" y2="0" stroke="#d7bd88" stroke-width="5"/>
     <path d="M0 0H52V112L26 94L0 112Z" fill="#245e7a"/>
@@ -148,6 +249,13 @@
     <line x1="13" y1="70" x2="39" y2="70" stroke="#ffd5e2" stroke-width="4"/>
   </g>
 
+  <g opacity="0.9" stroke="#d6b96d" fill="none" stroke-width="4">
+    <path d="M523 250C500 236 492 211 501 189M629 250C652 236 660 211 651 189"/>
+    <path d="M513 239L497 236M508 226L493 219M507 211L496 200M639 239L655 236M644 226L659 219M645 211L656 200" stroke-width="3"/>
+  </g>
+  <path d="M550 184L560 166L576 180L592 166L602 184Z" fill="url(#royal-gold)" stroke="#f3daa0" stroke-width="2"/>
+  <circle cx="576" cy="232" r="57" fill="#201f25" stroke="#6f5731" stroke-width="4"/>
+  <circle cx="576" cy="232" r="48" fill="#463c36" stroke="#e1c578" stroke-width="3"/>
   <circle cx="576" cy="232" r="43" fill="#463c36"/>
   <circle cx="576" cy="232" r="35" fill="none" stroke="#c4a66e" stroke-width="6"/>
   <path d="M554 247V217H575V224H562V230H573V237H562V247ZM580 247V217H594C601 217 605 221 605 226C605 230 603 233 600 234C604 235 607 238 607 242C607 248 602 251 594 251H580ZM588 229H594C597 229 598 228 598 226C598 224 597 223 594 223H588ZM588 245H595C598 245 600 244 600 241C600 239 598 238 595 238H588Z" fill="#f7df9b"/>
@@ -284,7 +392,49 @@
     <line x1="1026" y1="558" x2="1179" y2="648"/>
     <line x1="1076" y1="558" x2="1246" y2="648"/>
   </g>
+  <g id="royal-floor-inlay">
+    <path d="M76 573L350 648H802L1076 573" fill="#2d2522" opacity="0.18"/>
+    <path d="M229 558L391 648M923 558L761 648" fill="none" stroke="#d3ae5f" stroke-width="3" opacity="0.62"/>
+    <path d="M278 558L427 648M874 558L725 648" fill="none" stroke="#5c4023" stroke-width="2" opacity="0.8"/>
+    <ellipse cx="576" cy="611" rx="156" ry="34" fill="#3b2f29" opacity="0.84" stroke="#caa657" stroke-width="3"/>
+    <ellipse cx="576" cy="611" rx="132" ry="25" fill="none" stroke="#73522c" stroke-width="3"/>
+    <path d="M576 583L630 611L576 639L522 611Z" fill="#8c6838" opacity="0.5" stroke="#e1c477" stroke-width="3"/>
+    <circle cx="576" cy="611" r="18" fill="#1e2028" stroke="#f0d58c" stroke-width="3"/>
+    <path d="M576 593V629M558 611H594M564 599L588 623M588 599L564 623" stroke="#e8cb7c" stroke-width="2" opacity="0.86"/>
+    <g fill="#eccd7a" opacity="0.66">
+      <circle cx="441" cy="611" r="3"/><circle cx="711" cy="611" r="3"/>
+      <circle cx="477" cy="594" r="3"/><circle cx="675" cy="594" r="3"/>
+      <circle cx="477" cy="628" r="3"/><circle cx="675" cy="628" r="3"/>
+    </g>
+  </g>
+  <g fill="none" stroke="#352923" stroke-width="2" opacity="0.5">
+    <path d="M128 593L161 582L178 590L208 574"/>
+    <path d="M944 600L967 586L990 592L1024 578"/>
+    <path d="M332 619L349 609L364 616"/>
+    <path d="M790 621L808 608L824 615"/>
+  </g>
   <line x1="76" y1="558" x2="1076" y2="558" stroke="#f2ca7f" stroke-width="5"/>
   <line x1="76" y1="564" x2="1076" y2="564" stroke="#5e3928" stroke-width="2"/>
+  <g id="foreground-royal-pillars" opacity="0.96">
+    <path d="M0 411H46L56 435V648H0Z" fill="#28262b" stroke="#9f8150" stroke-width="4"/>
+    <path d="M11 438H42V648H11Z" fill="#494348"/>
+    <path d="M19 446H27V638H19Z" fill="#c2a66d" opacity="0.24"/>
+    <path d="M1152 411H1106L1096 435V648H1152Z" fill="#28262b" stroke="#9f8150" stroke-width="4"/>
+    <path d="M1141 438H1110V648H1141Z" fill="#494348"/>
+    <path d="M1133 446H1125V638H1133Z" fill="#c2a66d" opacity="0.24"/>
+    <circle cx="29" cy="430" r="9" fill="#d3b66f"/><circle cx="1123" cy="430" r="9" fill="#d3b66f"/>
+  </g>
+  <g id="royal-balustrade">
+    <rect x="0" y="451" width="1152" height="17" fill="#2b2728" stroke="#806338" stroke-width="2"/>
+    <rect x="0" y="451" width="1152" height="5" fill="url(#royal-gold)"/>
+    <g fill="#6f604e" stroke="#2f2928" stroke-width="2">
+      <path d="M20 448H42L39 475H23Z"/><path d="M116 448H138L135 475H119Z"/>
+      <path d="M212 448H234L231 475H215Z"/><path d="M308 448H330L327 475H311Z"/>
+      <path d="M404 448H426L423 475H407Z"/><path d="M500 448H522L519 475H503Z"/>
+      <path d="M596 448H618L615 475H599Z"/><path d="M692 448H714L711 475H695Z"/>
+      <path d="M788 448H810L807 475H791Z"/><path d="M884 448H906L903 475H887Z"/>
+      <path d="M980 448H1002L999 475H983Z"/><path d="M1076 448H1098L1095 475H1079Z"/>
+    </g>
+  </g>
   <rect width="1152" height="648" fill="url(#vignette)"/>
 </svg>
