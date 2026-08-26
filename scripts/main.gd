@@ -14,6 +14,9 @@ const RenSpecialSpriteSheet := preload("res://assets/characters/ren_special_spri
 const RenReactionSpriteSheet := preload("res://assets/characters/ren_reaction_sprites_v1.png")
 const VelFighterTexture := preload("res://assets/characters/vel_fighter.png")
 const SCREEN_SIZE := Vector2(1152.0, 648.0)
+const SUPER_METER_SIZE := Vector2(144.0, 18.0)
+const SUPER_METER_MARGIN := Vector2(48.0, 26.0)
+const SUPER_METER_INSET := 3.0
 const ARENA_CENTER_X := Fighter.ARENA_WIDTH * 0.5
 const CAMERA_HALF_WIDTH := SCREEN_SIZE.x * 0.5
 const CAMERA_DEAD_ZONE := 28.0
@@ -2282,23 +2285,86 @@ func _draw() -> void:
 	draw_rect(Rect2(48, 40, 450, 34), p1_accent, false, 2.0)
 	draw_rect(Rect2(654, 40, 450, 34), p2_accent, false, 2.0)
 
-	# Super meters fill toward the center of the screen.
-	draw_rect(Rect2(48, 80, 450, 10), Color("101820"), true)
-	draw_rect(Rect2(654, 80, 450, 10), Color("101820"), true)
-	var p1_meter_width := 446.0 * float(fighters[0].meter) / float(Fighter.MAX_METER)
-	var p2_meter_width := 446.0 * float(fighters[1].meter) / float(Fighter.MAX_METER)
+	var font := ThemeDB.fallback_font
+	# Compact super meters sit at the lower corners and fill toward center stage.
+	var meter_y := SCREEN_SIZE.y - SUPER_METER_MARGIN.y - SUPER_METER_SIZE.y
+	var p1_meter_rect := Rect2(
+		Vector2(SUPER_METER_MARGIN.x, meter_y),
+		SUPER_METER_SIZE
+	)
+	var p2_meter_rect := Rect2(
+		Vector2(SCREEN_SIZE.x - SUPER_METER_MARGIN.x - SUPER_METER_SIZE.x, meter_y),
+		SUPER_METER_SIZE
+	)
+	var meter_fill_capacity := SUPER_METER_SIZE.x - SUPER_METER_INSET * 2.0
+	var meter_fill_height := SUPER_METER_SIZE.y - SUPER_METER_INSET * 2.0
+	var p1_meter_width := meter_fill_capacity * float(fighters[0].meter) / float(Fighter.MAX_METER)
+	var p2_meter_width := meter_fill_capacity * float(fighters[1].meter) / float(Fighter.MAX_METER)
 	var p1_meter_color := Color("ffd45e") if fighters[0].meter >= Fighter.MAX_METER else p1_color.lightened(0.2)
 	var p2_meter_color := Color("ffd45e") if fighters[1].meter >= Fighter.MAX_METER else p2_color.lightened(0.2)
-	draw_rect(Rect2(50, 82, p1_meter_width, 6), p1_meter_color, true)
-	draw_rect(Rect2(1102.0 - p2_meter_width, 82, p2_meter_width, 6), p2_meter_color, true)
-	draw_rect(Rect2(48, 80, 450, 10), p1_accent, false, 1.0)
-	draw_rect(Rect2(654, 80, 450, 10), p2_accent, false, 1.0)
-
-	var font := ThemeDB.fallback_font
+	draw_rect(Rect2(p1_meter_rect.position + Vector2(0.0, 3.0), p1_meter_rect.size), Color(0, 0, 0, 0.5), true)
+	draw_rect(Rect2(p2_meter_rect.position + Vector2(0.0, 3.0), p2_meter_rect.size), Color(0, 0, 0, 0.5), true)
+	draw_rect(p1_meter_rect, Color(0.025, 0.055, 0.07, 0.94), true)
+	draw_rect(p2_meter_rect, Color(0.025, 0.055, 0.07, 0.94), true)
+	draw_rect(
+		Rect2(
+			p1_meter_rect.position + Vector2.ONE * SUPER_METER_INSET,
+			Vector2(p1_meter_width, meter_fill_height)
+		),
+		p1_meter_color,
+		true
+	)
+	draw_rect(
+		Rect2(
+			Vector2(
+				p2_meter_rect.end.x - SUPER_METER_INSET - p2_meter_width,
+				p2_meter_rect.position.y + SUPER_METER_INSET
+			),
+			Vector2(p2_meter_width, meter_fill_height)
+		),
+		p2_meter_color,
+		true
+	)
+	draw_rect(p1_meter_rect, p1_accent, false, 2.0)
+	draw_rect(p2_meter_rect, p2_accent, false, 2.0)
+	draw_string(
+		font,
+		Vector2(p1_meter_rect.position.x, p1_meter_rect.position.y - 6.0),
+		"SUPER",
+		HORIZONTAL_ALIGNMENT_LEFT,
+		SUPER_METER_SIZE.x,
+		11,
+		p1_accent
+	)
+	draw_string(
+		font,
+		Vector2(p2_meter_rect.position.x, p2_meter_rect.position.y - 6.0),
+		"SUPER",
+		HORIZONTAL_ALIGNMENT_RIGHT,
+		SUPER_METER_SIZE.x,
+		11,
+		p2_accent
+	)
 	if fighters[0].meter >= Fighter.MAX_METER:
-		draw_string(font, Vector2(50, 89), "SUPER READY", HORIZONTAL_ALIGNMENT_RIGHT, 446, 9, Color("2a210b"))
+		draw_string(
+			font,
+			Vector2(p1_meter_rect.position.x + 4.0, p1_meter_rect.position.y + 14.0),
+			"MAX",
+			HORIZONTAL_ALIGNMENT_CENTER,
+			SUPER_METER_SIZE.x - 8.0,
+			10,
+			Color("2a210b")
+		)
 	if fighters[1].meter >= Fighter.MAX_METER:
-		draw_string(font, Vector2(656, 89), "SUPER READY", HORIZONTAL_ALIGNMENT_LEFT, 446, 9, Color("2a210b"))
+		draw_string(
+			font,
+			Vector2(p2_meter_rect.position.x + 4.0, p2_meter_rect.position.y + 14.0),
+			"MAX",
+			HORIZONTAL_ALIGNMENT_CENTER,
+			SUPER_METER_SIZE.x - 8.0,
+			10,
+			Color("2a210b")
+		)
 	draw_string(font, Vector2(50, 111), fighters[0].fighter_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 19, p1_accent)
 	draw_string(font, Vector2(654, 111), fighters[1].fighter_name, HORIZONTAL_ALIGNMENT_RIGHT, 448, 19, p2_accent)
 	var timer_text := "∞" if game_mode == MODE_TRAINING else "%02d" % ceili(float(round_frames) / 60.0)
