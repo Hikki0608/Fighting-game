@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1152" height="648" viewBox="0 0 1152 648">
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6f7478"/>
+      <stop offset="0.62" stop-color="#858a8d"/>
+      <stop offset="1" stop-color="#74797c"/>
+    </linearGradient>
+    <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8e9396"/>
+      <stop offset="1" stop-color="#c1c5c7"/>
+    </linearGradient>
+    <linearGradient id="side-left" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4d5256"/>
+      <stop offset="1" stop-color="#747a7e"/>
+    </linearGradient>
+    <linearGradient id="side-right" x1="1" y1="0" x2="0" y2="0">
+      <stop offset="0" stop-color="#4d5256"/>
+      <stop offset="1" stop-color="#747a7e"/>
+    </linearGradient>
+    <radialGradient id="room-light" cx="50%" cy="42%" r="68%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.24"/>
+      <stop offset="0.7" stop-color="#ffffff" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#1c2226" stop-opacity="0.3"/>
+    </radialGradient>
+    <linearGradient id="vignette" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#11171b" stop-opacity="0.24"/>
+      <stop offset="0.48" stop-color="#11171b" stop-opacity="0"/>
+      <stop offset="1" stop-color="#11171b" stop-opacity="0.28"/>
+    </linearGradient>
+    <pattern id="minor-grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0V24" fill="none" stroke="#343a3e" stroke-width="1" opacity="0.44"/>
+      <path d="M12 0V24M0 12H24" fill="none" stroke="#343a3e" stroke-width="0.55" opacity="0.2"/>
+    </pattern>
+    <pattern id="major-grid" width="96" height="96" patternUnits="userSpaceOnUse">
+      <path d="M96 0H0V96" fill="none" stroke="#20272b" stroke-width="1.7" opacity="0.54"/>
+    </pattern>
+    <clipPath id="back-wall-clip">
+      <rect width="1152" height="374"/>
+    </clipPath>
+    <clipPath id="floor-clip">
+      <path d="M0 374H1152V648H0Z"/>
+    </clipPath>
+  </defs>
+
+  <rect width="1152" height="648" fill="#3b4246"/>
+
+  <!-- Rear measurement wall -->
+  <rect width="1152" height="374" fill="url(#wall)"/>
+  <rect width="1152" height="374" fill="url(#minor-grid)"/>
+  <rect width="1152" height="374" fill="url(#major-grid)"/>
+  <g clip-path="url(#back-wall-clip)" fill="none" stroke="#2f363a" opacity="0.28">
+    <path d="M0 54H1152M0 150H1152M0 246H1152M0 342H1152" stroke-width="3"/>
+    <path d="M96 0V374M288 0V374M480 0V374M672 0V374M864 0V374M1056 0V374" stroke-width="2"/>
+  </g>
+
+  <!-- Angled side walls recreate the enclosed studio-room perspective. -->
+  <path d="M0 0H112L176 78V374H0Z" fill="url(#side-left)" opacity="0.42"/>
+  <path d="M1152 0H1040L976 78V374H1152Z" fill="url(#side-right)" opacity="0.42"/>
+  <g fill="none" stroke="#30373b" opacity="0.58">
+    <path d="M22 0V374M54 0L72 374M86 0L124 374M118 8L176 88M0 72L176 116M0 168L176 178M0 264L176 246M0 350L176 318"/>
+    <path d="M1130 0V374M1098 0L1080 374M1066 0L1028 374M1034 8L976 88M1152 72L976 116M1152 168L976 178M1152 264L976 246M1152 350L976 318"/>
+  </g>
+
+  <!-- Ceiling reference frame -->
+  <path d="M112 0L176 78H976L1040 0" fill="none" stroke="#31383c" stroke-width="8" opacity="0.72"/>
+  <path d="M112 0L176 78H976L1040 0" fill="none" stroke="#c51f2d" stroke-width="4"/>
+  <path d="M176 78V94M976 78V94" stroke="#e53a44" stroke-width="3"/>
+
+  <!-- Perspective floor -->
+  <path d="M0 374H1152V648H0Z" fill="url(#floor)"/>
+  <g clip-path="url(#floor-clip)" fill="none" stroke="#30373b">
+    <path d="M576 356L-520 648M576 356L-376 648M576 356L-232 648M576 356L-88 648M576 356L56 648M576 356L200 648M576 356L344 648M576 356L488 648M576 356L664 648M576 356L808 648M576 356L952 648M576 356L1096 648M576 356L1240 648M576 356L1384 648M576 356L1528 648M576 356L1672 648" stroke-width="1.35" opacity="0.64"/>
+    <path d="M0 392H1152M0 414H1152M0 442H1152M0 476H1152M0 516H1152M0 562H1152M0 616H1152" stroke-width="1.25" opacity="0.65"/>
+    <path d="M0 374H1152M0 476H1152M0 616H1152" stroke-width="2.4" opacity="0.48"/>
+  </g>
+
+  <!-- Neutral-axis guides -->
+  <path d="M576 0V374" stroke="#73141d" stroke-width="9" opacity="0.45"/>
+  <path d="M576 0V374" stroke="#df1f2d" stroke-width="4"/>
+  <path d="M569 374H583L590 648H562Z" fill="#8f101d" opacity="0.75"/>
+  <path d="M574 374H578L582 648H570Z" fill="#f12834"/>
+  <path d="M0 552H1152" stroke="#7c111c" stroke-width="11" opacity="0.46"/>
+  <path d="M0 552H1152" stroke="#dc1d2b" stroke-width="4"/>
+  <path d="M0 374H1152" stroke="#262d31" stroke-width="5" opacity="0.62"/>
+  <path d="M0 376H1152" stroke="#aeb4b7" stroke-width="2" opacity="0.75"/>
+
+  <!-- Small distance ticks make spacing readable during combo practice. -->
+  <g stroke="#e52a36" stroke-width="3" opacity="0.9">
+    <path d="M432 544V560M504 544V560M648 544V560M720 544V560"/>
+  </g>
+  <g fill="#3a4044" font-family="sans-serif" font-size="13" font-weight="700" text-anchor="middle" opacity="0.72">
+    <text x="432" y="578">-2</text>
+    <text x="504" y="578">-1</text>
+    <text x="576" y="578">0</text>
+    <text x="648" y="578">1</text>
+    <text x="720" y="578">2</text>
+  </g>
+
+  <rect width="1152" height="648" fill="url(#room-light)"/>
+  <rect width="1152" height="648" fill="url(#vignette)"/>
+  <rect x="8" y="8" width="1136" height="632" fill="none" stroke="#ced3d5" stroke-width="2" opacity="0.18"/>
+</svg>

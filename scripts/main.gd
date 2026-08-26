@@ -5,6 +5,7 @@ const CpuControllerScript := preload("res://scripts/cpu_controller.gd")
 const MenuBackdropScript := preload("res://scripts/menu_backdrop.gd")
 const ArenaAmbienceScript := preload("res://scripts/arena_ambience.gd")
 const ArenaBackgroundTexture := preload("res://assets/arena_background.svg")
+const TrainingStageTexture := preload("res://assets/training_stage.svg")
 const RenFighterTexture := preload("res://assets/characters/ren_fighter.png")
 const RenBasicSpriteSheet := preload("res://assets/characters/ren_basic_sprites_v1.png")
 const RenGroundSpriteSheet := preload("res://assets/characters/ren_ground_sprites_v1.png")
@@ -30,6 +31,26 @@ const ROUNDS_TO_WIN := 2
 const MODE_SOLO: StringName = &"solo"
 const MODE_VERSUS: StringName = &"versus"
 const MODE_TRAINING: StringName = &"training"
+const STAGE_ROYAL_COLOSSEUM := 0
+const STAGE_TRAINING_GRID := 1
+const STAGE_ROSTER := [
+	{
+		"id": &"royal_colosseum",
+		"name": "ROYAL COLOSSEUM",
+		"subtitle": "CROWN OF THE GRAND ARENA",
+		"description": "A royal arena of banners, fire and a roaring crowd.",
+		"texture": ArenaBackgroundTexture,
+		"accent": Color("f5d77a")
+	},
+	{
+		"id": &"training_grid",
+		"name": "TRAINING GRID",
+		"subtitle": "FRAME MEASUREMENT LAB",
+		"description": "A neutral grid with clear center and distance guides.",
+		"texture": TrainingStageTexture,
+		"accent": Color("ef3340")
+	}
+]
 const MODE_MENU_DETAILS := [
 	"ENTER THE ARENA AGAINST A TACTICAL CPU",
 	"LOCAL DUEL  •  KEYBOARD + GAMEPAD",
@@ -166,6 +187,7 @@ var announcement_sub := ""
 var combat_callout_frames := 0
 var game_mode: StringName = MODE_SOLO
 var mode_selection := 0
+var stage_selection := STAGE_ROYAL_COLOSSEUM
 var character_selection := [0, 1]
 var selecting_player := 0
 var cpu_controller: CpuController
@@ -188,6 +210,7 @@ var camera_zoom := CAMERA_MIN_ZOOM
 var camera_shake_offset := Vector2.ZERO
 
 var world_root: Node2D
+var arena_backgrounds: Array[Sprite2D] = []
 var arena_ambience: ArenaAmbience
 var announcement_label: Label
 var subtitle_label: Label
@@ -205,6 +228,12 @@ var menu_detail_panel: Panel
 var menu_portraits: Array[TextureRect] = []
 var menu_portrait_base_positions: Array[Vector2] = []
 var menu_animation_time := 0.0
+var stage_select_layer: CanvasLayer
+var stage_mode_label: Label
+var stage_summary_label: Label
+var stage_hint_label: Label
+var stage_buttons: Array[Button] = []
+var stage_status_labels: Array[Label] = []
 var character_select_layer: CanvasLayer
 var solo_button: Button
 var versus_button: Button
@@ -234,6 +263,7 @@ func _ready() -> void:
 	_create_fighters()
 	_create_ui()
 	_create_mode_menu()
+	_create_stage_select_menu()
 	_create_character_select_menu()
 	_initialize_fullscreen_support()
 	_show_mode_menu()
@@ -303,12 +333,26 @@ func _create_arena_background() -> void:
 		background.show_behind_parent = true
 		background.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		world_root.add_child(background)
+		arena_backgrounds.append(background)
 	arena_ambience = ArenaAmbienceScript.new() as ArenaAmbience
 	arena_ambience.name = "ArenaAmbience"
 	arena_ambience.z_index = -90
 	arena_ambience.configure(ARENA_CENTER_X)
 	world_root.add_child(arena_ambience)
+	_apply_selected_stage()
 	_apply_world_transform()
+
+
+func _apply_selected_stage() -> void:
+	var stage_data: Dictionary = STAGE_ROSTER[stage_selection]
+	var stage_texture := stage_data["texture"] as Texture2D
+	for background in arena_backgrounds:
+		background.texture = stage_texture
+
+	if arena_ambience != null:
+		var uses_arena_ambience := stage_selection == STAGE_ROYAL_COLOSSEUM
+		arena_ambience.visible = uses_arena_ambience
+		arena_ambience.set_process(uses_arena_ambience)
 
 
 func _create_fighters() -> void:
@@ -780,6 +824,244 @@ func _make_training_panel_style(accent: Color) -> StyleBoxFlat:
 	return style
 
 
+func _create_stage_select_menu() -> void:
+	stage_select_layer = CanvasLayer.new()
+	stage_select_layer.layer = 11
+	stage_select_layer.visible = false
+	add_child(stage_select_layer)
+
+	var backdrop := ColorRect.new()
+	backdrop.position = Vector2.ZERO
+	backdrop.size = SCREEN_SIZE
+	backdrop.color = Color(0.01, 0.022, 0.032, 0.97)
+	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stage_select_layer.add_child(backdrop)
+
+	var upper_glow := ColorRect.new()
+	upper_glow.position = Vector2(0.0, 0.0)
+	upper_glow.size = Vector2(SCREEN_SIZE.x, 126.0)
+	upper_glow.color = Color(0.06, 0.13, 0.15, 0.42)
+	upper_glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stage_select_layer.add_child(upper_glow)
+
+	var header_line := ColorRect.new()
+	header_line.position = Vector2(74.0, 89.0)
+	header_line.size = Vector2(1004.0, 2.0)
+	header_line.color = Color("f5d77a", 0.72)
+	header_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stage_select_layer.add_child(header_line)
+
+	var title := Label.new()
+	title.position = Vector2(226.0, 24.0)
+	title.size = Vector2(700.0, 62.0)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.text = "SELECT STAGE"
+	title.add_theme_font_size_override("font_size", 40)
+	title.add_theme_color_override("font_color", Color("fff3c4"))
+	title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+	title.add_theme_constant_override("shadow_offset_x", 3)
+	title.add_theme_constant_override("shadow_offset_y", 3)
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stage_select_layer.add_child(title)
+
+	stage_mode_label = Label.new()
+	stage_mode_label.position = Vector2(176.0, 101.0)
+	stage_mode_label.size = Vector2(800.0, 32.0)
+	stage_mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stage_mode_label.add_theme_font_size_override("font_size", 16)
+	stage_mode_label.add_theme_color_override("font_color", Color("91ddea"))
+	stage_mode_label.add_theme_constant_override("letter_spacing", 2)
+	stage_mode_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stage_select_layer.add_child(stage_mode_label)
+
+	var card_positions := [Vector2(74.0, 146.0), Vector2(598.0, 146.0)]
+	for index in STAGE_ROSTER.size():
+		var card := _make_stage_card(index, card_positions[index])
+		stage_buttons.append(card)
+		stage_select_layer.add_child(card)
+
+	stage_summary_label = Label.new()
+	stage_summary_label.position = Vector2(126.0, 544.0)
+	stage_summary_label.size = Vector2(900.0, 34.0)
+	stage_summary_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stage_summary_label.add_theme_font_size_override("font_size", 17)
+	stage_summary_label.add_theme_color_override("font_color", Color("d8f7ff"))
+	stage_summary_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stage_select_layer.add_child(stage_summary_label)
+
+	stage_hint_label = Label.new()
+	stage_hint_label.position = Vector2(126.0, 588.0)
+	stage_hint_label.size = Vector2(900.0, 34.0)
+	stage_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stage_hint_label.text = "A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / J: CONFIRM    ESC: BACK"
+	stage_hint_label.add_theme_font_size_override("font_size", 14)
+	stage_hint_label.add_theme_color_override("font_color", Color("91acb7"))
+	stage_hint_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stage_select_layer.add_child(stage_hint_label)
+
+
+func _make_stage_card(index: int, card_position: Vector2) -> Button:
+	var stage_data: Dictionary = STAGE_ROSTER[index]
+	var accent: Color = stage_data["accent"]
+	var card := Button.new()
+	card.position = card_position
+	card.size = Vector2(480.0, 378.0)
+	card.focus_mode = Control.FOCUS_NONE
+	card.clip_contents = true
+	card.tooltip_text = "Select %s" % str(stage_data["name"])
+	card.add_theme_stylebox_override("normal", _make_button_style(Color("0d1c26"), Color("31505a"), 2))
+	card.add_theme_stylebox_override("hover", _make_button_style(Color("132b36"), accent, 4))
+	card.add_theme_stylebox_override("pressed", _make_button_style(Color("193944"), Color("fff3c4"), 4))
+	card.pressed.connect(_on_stage_card_pressed.bind(index))
+	card.mouse_entered.connect(_on_stage_card_hovered.bind(index))
+
+	var preview := TextureRect.new()
+	preview.position = Vector2(14.0, 14.0)
+	preview.size = Vector2(452.0, 254.0)
+	preview.texture = stage_data["texture"] as Texture2D
+	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	preview.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(preview)
+
+	var preview_tint := ColorRect.new()
+	preview_tint.position = preview.position
+	preview_tint.size = preview.size
+	preview_tint.color = Color(accent, 0.06)
+	preview_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(preview_tint)
+
+	var accent_bar := ColorRect.new()
+	accent_bar.position = Vector2(14.0, 268.0)
+	accent_bar.size = Vector2(452.0, 4.0)
+	accent_bar.color = accent
+	accent_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(accent_bar)
+
+	var name_label := Label.new()
+	name_label.position = Vector2(18.0, 276.0)
+	name_label.size = Vector2(444.0, 38.0)
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.text = str(stage_data["name"])
+	name_label.add_theme_font_size_override("font_size", 24)
+	name_label.add_theme_color_override("font_color", Color("fff3c4"))
+	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(name_label)
+
+	var subtitle := Label.new()
+	subtitle.position = Vector2(18.0, 311.0)
+	subtitle.size = Vector2(444.0, 22.0)
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	subtitle.text = str(stage_data["subtitle"])
+	subtitle.add_theme_font_size_override("font_size", 12)
+	subtitle.add_theme_color_override("font_color", accent.lightened(0.22))
+	subtitle.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(subtitle)
+
+	var status_label := Label.new()
+	status_label.position = Vector2(18.0, 341.0)
+	status_label.size = Vector2(444.0, 24.0)
+	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	status_label.add_theme_font_size_override("font_size", 13)
+	status_label.add_theme_color_override("font_color", Color("91acb7"))
+	status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(status_label)
+	stage_status_labels.append(status_label)
+	return card
+
+
+func _show_stage_select(selected_mode: StringName) -> void:
+	phase = &"stage_select"
+	game_mode = selected_mode
+	_reset_camera()
+	menu_layer.visible = false
+	stage_select_layer.visible = true
+	character_select_layer.visible = false
+	announcement_label.visible = false
+	subtitle_label.visible = false
+	mode_label.visible = false
+	training_label.visible = false
+	training_hud_label.visible = false
+	training_input_label.visible = false
+	for fighter in fighters:
+		fighter.visible = false
+		fighter.clear_input()
+	_refresh_stage_select()
+	queue_redraw()
+
+
+func _refresh_stage_select() -> void:
+	var mode_name := "SOLO BATTLE" if game_mode == MODE_SOLO else "VERSUS"
+	stage_mode_label.text = "%s  •  CHOOSE THE BATTLEFIELD" % mode_name
+	for index in STAGE_ROSTER.size():
+		var stage_data: Dictionary = STAGE_ROSTER[index]
+		var accent: Color = stage_data["accent"]
+		var is_current := stage_selection == index
+		var fill := Color("0d1c26").lerp(accent.darkened(0.64), 0.22 if is_current else 0.06)
+		var border := Color("fff3c4") if is_current else Color("31505a")
+		var width := 5 if is_current else 2
+		stage_buttons[index].add_theme_stylebox_override("normal", _make_button_style(fill, border, width))
+		stage_buttons[index].add_theme_stylebox_override(
+			"hover",
+			_make_button_style(fill.lightened(0.07), Color("fff3c4") if is_current else accent, 5 if is_current else 4)
+		)
+		stage_status_labels[index].text = "◆ SELECTED" if is_current else "CHOOSE"
+		stage_status_labels[index].add_theme_color_override(
+			"font_color",
+			Color("fff3c4") if is_current else accent.lightened(0.2)
+		)
+
+	var selected_stage: Dictionary = STAGE_ROSTER[stage_selection]
+	var selected_accent: Color = selected_stage["accent"]
+	stage_summary_label.text = "%s  •  %s" % [
+		str(selected_stage["name"]),
+		str(selected_stage["description"])
+	]
+	stage_summary_label.add_theme_color_override("font_color", selected_accent)
+
+
+func _handle_stage_select_input() -> void:
+	var previous_pressed := _key_just_pressed(KEY_LEFT)
+	previous_pressed = _key_just_pressed(KEY_A) or previous_pressed
+	previous_pressed = _key_just_pressed(KEY_UP) or previous_pressed
+	previous_pressed = _key_just_pressed(KEY_W) or previous_pressed
+	var next_pressed := _key_just_pressed(KEY_RIGHT)
+	next_pressed = _key_just_pressed(KEY_D) or next_pressed
+	next_pressed = _key_just_pressed(KEY_DOWN) or next_pressed
+	next_pressed = _key_just_pressed(KEY_S) or next_pressed
+	var confirm_pressed := _key_just_pressed(KEY_ENTER)
+	confirm_pressed = _key_just_pressed(KEY_SPACE) or confirm_pressed
+	confirm_pressed = _key_just_pressed(Fighter.KEYBOARD_LIGHT_KEY) or confirm_pressed
+
+	if previous_pressed:
+		stage_selection = wrapi(stage_selection - 1, 0, STAGE_ROSTER.size())
+		_refresh_stage_select()
+	elif next_pressed:
+		stage_selection = wrapi(stage_selection + 1, 0, STAGE_ROSTER.size())
+		_refresh_stage_select()
+	if confirm_pressed:
+		_confirm_stage_selection()
+
+
+func _on_stage_card_hovered(index: int) -> void:
+	if phase != &"stage_select" or index == stage_selection:
+		return
+	stage_selection = index
+	_refresh_stage_select()
+
+
+func _on_stage_card_pressed(index: int) -> void:
+	stage_selection = index
+	_refresh_stage_select()
+	_confirm_stage_selection()
+
+
+func _confirm_stage_selection() -> void:
+	_apply_selected_stage()
+	_show_character_select(game_mode)
+
+
 func _create_character_select_menu() -> void:
 	character_select_layer = CanvasLayer.new()
 	character_select_layer.layer = 11
@@ -926,6 +1208,7 @@ func _show_character_select(selected_mode: StringName) -> void:
 	game_mode = selected_mode
 	_reset_camera()
 	menu_layer.visible = false
+	stage_select_layer.visible = false
 	character_select_layer.visible = true
 	announcement_label.visible = false
 	subtitle_label.visible = false
@@ -1061,7 +1344,7 @@ func _confirm_character_selection() -> void:
 
 func _physics_process(delta: float) -> void:
 	_handle_system_input()
-	if phase == &"menu" or phase == &"character_select":
+	if phase == &"menu" or phase == &"stage_select" or phase == &"character_select":
 		if phase == &"menu":
 			_update_menu_animation(delta)
 		_update_ui()
@@ -1132,11 +1415,22 @@ func _handle_system_input() -> void:
 	if phase == &"menu":
 		_handle_mode_menu_input()
 		return
-	if phase == &"character_select":
-		var back_pressed := _key_just_pressed(KEY_M)
-		back_pressed = _key_just_pressed(KEY_ESCAPE) or back_pressed
-		if back_pressed:
+	if phase == &"stage_select":
+		var stage_back_pressed := _key_just_pressed(KEY_M)
+		stage_back_pressed = _key_just_pressed(KEY_ESCAPE) or stage_back_pressed
+		if stage_back_pressed:
 			_show_mode_menu()
+		else:
+			_handle_stage_select_input()
+		return
+	if phase == &"character_select":
+		var character_back_pressed := _key_just_pressed(KEY_M)
+		character_back_pressed = _key_just_pressed(KEY_ESCAPE) or character_back_pressed
+		if character_back_pressed:
+			if game_mode == MODE_TRAINING:
+				_show_mode_menu()
+			else:
+				_show_stage_select(game_mode)
 		else:
 			_handle_character_select_input()
 		return
@@ -1216,6 +1510,7 @@ func _show_mode_menu() -> void:
 	subtitle_label.visible = false
 	mode_label.visible = false
 	menu_layer.visible = true
+	stage_select_layer.visible = false
 	character_select_layer.visible = false
 	mode_selection = 0
 	for fighter in fighters:
@@ -1285,20 +1580,28 @@ func _update_menu_animation(delta: float) -> void:
 
 
 func _start_solo_mode() -> void:
-	_show_character_select(MODE_SOLO)
+	stage_selection = STAGE_ROYAL_COLOSSEUM
+	_show_stage_select(MODE_SOLO)
 
 
 func _start_versus_mode() -> void:
-	_show_character_select(MODE_VERSUS)
+	stage_selection = STAGE_ROYAL_COLOSSEUM
+	_show_stage_select(MODE_VERSUS)
 
 
 func _start_training_mode() -> void:
+	stage_selection = STAGE_TRAINING_GRID
+	_apply_selected_stage()
 	_show_character_select(MODE_TRAINING)
 
 
 func _start_match(selected_mode: StringName) -> void:
 	game_mode = selected_mode
+	if game_mode == MODE_TRAINING:
+		stage_selection = STAGE_TRAINING_GRID
+	_apply_selected_stage()
 	menu_layer.visible = false
+	stage_select_layer.visible = false
 	character_select_layer.visible = false
 	announcement_label.visible = true
 	subtitle_label.visible = true
@@ -1585,7 +1888,7 @@ func _finish_round() -> void:
 	else:
 		announcement = "DRAW"
 		announcement_sub = "NO ROUND AWARDED"
-	if arena_ambience != null:
+	if arena_ambience != null and arena_ambience.visible:
 		arena_ambience.celebrate()
 
 	if winner >= 0 and wins[winner] >= ROUNDS_TO_WIN:
@@ -1740,7 +2043,7 @@ func _apply_attack_hit(
 	elif bool(attack_data.get("super", false)):
 		announcement_sub = str(attack_data.get("label", "SUPER"))
 		combat_callout_frames = 60
-		if arena_ambience != null:
+		if arena_ambience != null and arena_ambience.visible:
 			arena_ambience.pulse_for_super()
 	if result.ko:
 		if game_mode == MODE_TRAINING:
@@ -1962,7 +2265,7 @@ func _request_hud_redraw() -> void:
 
 
 func _draw() -> void:
-	if phase == &"menu" or phase == &"character_select":
+	if phase == &"menu" or phase == &"stage_select" or phase == &"character_select":
 		return
 
 	# Health and round HUD.
