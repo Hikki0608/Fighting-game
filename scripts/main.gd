@@ -3,6 +3,7 @@ extends Node2D
 const FighterScene := preload("res://scripts/fighter.gd")
 const CpuControllerScript := preload("res://scripts/cpu_controller.gd")
 const MenuBackdropScript := preload("res://scripts/menu_backdrop.gd")
+const ArenaAmbienceScript := preload("res://scripts/arena_ambience.gd")
 const ArenaBackgroundTexture := preload("res://assets/arena_background.svg")
 const RenFighterTexture := preload("res://assets/characters/ren_fighter.png")
 const RenBasicSpriteSheet := preload("res://assets/characters/ren_basic_sprites_v1.png")
@@ -187,6 +188,7 @@ var camera_zoom := CAMERA_MIN_ZOOM
 var camera_shake_offset := Vector2.ZERO
 
 var world_root: Node2D
+var arena_ambience: ArenaAmbience
 var announcement_label: Label
 var subtitle_label: Label
 var training_label: Label
@@ -301,6 +303,11 @@ func _create_arena_background() -> void:
 		background.show_behind_parent = true
 		background.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		world_root.add_child(background)
+	arena_ambience = ArenaAmbienceScript.new() as ArenaAmbience
+	arena_ambience.name = "ArenaAmbience"
+	arena_ambience.z_index = -90
+	arena_ambience.configure(ARENA_CENTER_X)
+	world_root.add_child(arena_ambience)
 	_apply_world_transform()
 
 
@@ -1578,6 +1585,8 @@ func _finish_round() -> void:
 	else:
 		announcement = "DRAW"
 		announcement_sub = "NO ROUND AWARDED"
+	if arena_ambience != null:
+		arena_ambience.celebrate()
 
 	if winner >= 0 and wins[winner] >= ROUNDS_TO_WIN:
 		phase = &"match_over"
@@ -1731,6 +1740,8 @@ func _apply_attack_hit(
 	elif bool(attack_data.get("super", false)):
 		announcement_sub = str(attack_data.get("label", "SUPER"))
 		combat_callout_frames = 60
+		if arena_ambience != null:
+			arena_ambience.pulse_for_super()
 	if result.ko:
 		if game_mode == MODE_TRAINING:
 			defender.health = 1
