@@ -18,11 +18,48 @@ const CROUCH_HURTBOX_WIDTH := VISUAL_SIZE * 0.52
 const CROUCH_HURTBOX_HEIGHT := VISUAL_SIZE * 0.64
 const SPRITE_SHEET_CELL_SIZE := 256.0
 const SPRITE_DRAW_OFFSET_Y := 8.0
+const STATIC_SPRITE_DRAW_OFFSET_Y := 7.0
 const REN_ANIMATION_BASIC := 0
 const REN_ANIMATION_GROUND := 1
 const REN_ANIMATION_AIR_SPECIAL := 2
 const REN_ANIMATION_SPECIAL := 3
 const REN_ANIMATION_REACTION := 4
+const REN_GROUNDED_TARGET_BOTTOM_GAP := 7.0
+const REN_BASIC_BOTTOM_GAPS := [
+	[11, 11, 11, 11, 11],
+	[11, 11, 7, 11, 11],
+	[11, 11, 11, 11, 10],
+	[11, 11, 11, 11, 11],
+	[11, 11, 11, 11, 11]
+]
+const REN_GROUND_BOTTOM_GAPS := [
+	[23, 22, 21, 22, 22],
+	[54, 53, 53, 53, 54],
+	[38, 40, 40, 43, 38],
+	[62, 65, 58, 57, 62],
+	[54, 56, 55, 56, 54]
+]
+const REN_AIR_SPECIAL_BOTTOM_GAPS := [
+	[0, 0, 0, 0, 0],
+	[5, 2, 2, 2, 2],
+	[25, 52, 52, 44, 24],
+	[34, 34, 34, 34, 34],
+	[33, 33, 34, 33, 33]
+]
+const REN_SPECIAL_BOTTOM_GAPS := [
+	[1, 1, 1, 12, 0],
+	[46, 20, 3, 3, 0],
+	[18, 18, 24, 18, 18],
+	[32, 31, 30, 27, 29],
+	[45, 40, 33, 32, 32]
+]
+const REN_REACTION_BOTTOM_GAPS := [
+	[0, 0, 0, 0, 0],
+	[0, 0, 0, 0, 0],
+	[0, 2, 1, 1, 0],
+	[41, 41, 38, 41, 45],
+	[33, 33, 32, 23, 23]
+]
 const MAX_METER := 100
 const INPUT_BUFFER_FRAMES := 7
 const SUPER_CHORD_BUFFER_FRAMES := 5
@@ -819,7 +856,7 @@ func attack_rect() -> Rect2:
 	var attack_height: float = float(data.height) * VISUAL_COLLISION_SCALE
 	var x := position.x + BODY_WIDTH * 0.32 if facing > 0 else position.x - BODY_WIDTH * 0.32 - attack_range
 	var bottom_offset: float = float(data.get("bottom_offset", 22.0)) * VISUAL_COLLISION_SCALE
-	var y := position.y - attack_height - bottom_offset
+	var y := position.y - attack_height - bottom_offset + _current_sprite_grounding_offset_y()
 	return Rect2(x, y, attack_range, attack_height)
 
 
@@ -912,9 +949,10 @@ func take_projectile_request() -> Dictionary:
 	if not pending_projectile:
 		return {}
 	pending_projectile = false
+	var grounding_offset_y := _current_sprite_grounding_offset_y()
 	return {
 		"owner_id": player_id,
-		"position": position + Vector2(facing * 62.0, REN_PULSE_EFFECT_Y),
+		"position": position + Vector2(facing * 62.0, REN_PULSE_EFFECT_Y + grounding_offset_y),
 		"velocity": Vector2(facing * 510.0, 0.0),
 		"frames": 105,
 		"max_frames": 105,
@@ -926,7 +964,10 @@ func take_projectile_request() -> Dictionary:
 
 
 func ren_palm_effect_world_position() -> Vector2:
-	return position + Vector2(float(facing) * REN_PALM_EFFECT_OFFSET.x, REN_PALM_EFFECT_OFFSET.y)
+	return position + Vector2(
+		float(facing) * REN_PALM_EFFECT_OFFSET.x,
+		REN_PALM_EFFECT_OFFSET.y + _current_sprite_grounding_offset_y()
+	)
 
 
 func is_invulnerable() -> bool:
@@ -1092,7 +1133,10 @@ func _basic_attack_sprite_frame() -> int:
 	var startup := int(data.startup)
 	var active_end := startup + int(data.active)
 	var recovery := maxi(1, int(data.recovery))
-	if state_frame <= 0:
+	# Every attack row begins with a neutral or anticipation drawing. Hold it
+	# briefly so the pose reads as an action starting from neutral rather than a
+	# fighter popping directly into the windup image.
+	if state_frame <= 2:
 		return 0
 	if state_frame <= startup:
 		return 1
@@ -1131,6 +1175,8 @@ func _knockdown_sprite_frame() -> int:
 
 
 func _ren_super_sprite_frame() -> int:
+	if state_frame <= 2:
+		return 0
 	var frame_thresholds := [0, 3, 6, 8, 12, 16, 20, 23, 26, 31, 35, 39, 43, 47]
 	for sprite_frame in frame_thresholds.size():
 		if state_frame <= int(frame_thresholds[sprite_frame]):
@@ -1240,29 +1286,77 @@ func _has_character_image() -> bool:
 	return _animated_sprite_frame().x >= 0 or character_texture != null
 
 
+func _ren_sprite_bottom_gap_table(sheet_index: int) -> Array:
+	match sheet_index:
+		REN_ANIMATION_BASIC:
+			return REN_BASIC_BOTTOM_GAPS
+		REN_ANIMATION_GROUND:
+			return REN_GROUND_BOTTOM_GAPS
+		REN_ANIMATION_AIR_SPECIAL:
+			return REN_AIR_SPECIAL_BOTTOM_GAPS
+		REN_ANIMATION_SPECIAL:
+			return REN_SPECIAL_BOTTOM_GAPS
+		REN_ANIMATION_REACTION:
+			return REN_REACTION_BOTTOM_GAPS
+	return []
+
+
+func _sprite_grounding_offset_y(sprite_frame: Vector3i) -> float:
+	if character_id != &"ren" or sprite_frame.x < 0 or not is_on_ground():
+		return 0.0
+	# Knockdown rotates around a deliberately offset center and must retain its
+	# authored placement rather than being foot-anchored like upright poses.
+	if state == &"knockdown":
+		return 0.0
+	var gap_table := _ren_sprite_bottom_gap_table(sprite_frame.x)
+	if sprite_frame.z < 0 or sprite_frame.z >= gap_table.size():
+		return 0.0
+	var row: Array = gap_table[sprite_frame.z]
+	if sprite_frame.y < 0 or sprite_frame.y >= row.size():
+		return 0.0
+	var bottom_gap := float(row[sprite_frame.y])
+	return (bottom_gap - REN_GROUNDED_TARGET_BOTTOM_GAP) * VISUAL_SIZE / SPRITE_SHEET_CELL_SIZE
+
+
+func _current_sprite_grounding_offset_y() -> float:
+	return _sprite_grounding_offset_y(_animated_sprite_frame())
+
+
+func _draw_animated_sprite_frame(sprite_frame: Vector3i, modulate: Color) -> bool:
+	if sprite_frame.x < 0 or sprite_frame.x >= character_animation_textures.size():
+		return false
+	var source_position := Vector2(
+		float(sprite_frame.y) * SPRITE_SHEET_CELL_SIZE,
+		float(sprite_frame.z) * SPRITE_SHEET_CELL_SIZE
+	)
+	var grounding_offset_y := _sprite_grounding_offset_y(sprite_frame)
+	draw_texture_rect_region(
+		character_animation_textures[sprite_frame.x],
+		Rect2(
+			-VISUAL_SIZE * 0.5,
+			-VISUAL_SIZE + SPRITE_DRAW_OFFSET_Y + grounding_offset_y,
+			VISUAL_SIZE,
+			VISUAL_SIZE
+		),
+		Rect2(source_position, Vector2.ONE * SPRITE_SHEET_CELL_SIZE),
+		modulate
+	)
+	return true
+
+
 func _draw_character_image(modulate: Color) -> bool:
 	var sprite_frame := _animated_sprite_frame()
 	if sprite_frame.x >= 0:
-		var source_position := Vector2(
-			float(sprite_frame.y) * SPRITE_SHEET_CELL_SIZE,
-			float(sprite_frame.z) * SPRITE_SHEET_CELL_SIZE
-		)
-		draw_texture_rect_region(
-			character_animation_textures[sprite_frame.x],
-			Rect2(
-				-VISUAL_SIZE * 0.5,
-				-VISUAL_SIZE + SPRITE_DRAW_OFFSET_Y,
-				VISUAL_SIZE,
-				VISUAL_SIZE
-			),
-			Rect2(source_position, Vector2.ONE * SPRITE_SHEET_CELL_SIZE),
-			modulate
-		)
-		return true
+		return _draw_animated_sprite_frame(sprite_frame, modulate)
 	if character_texture != null:
 		draw_texture_rect(
 			character_texture,
-			Rect2(-VISUAL_SIZE * 0.5, -VISUAL_SIZE, VISUAL_SIZE, VISUAL_SIZE),
+			Rect2(
+				-VISUAL_SIZE * 0.5,
+				-VISUAL_SIZE + STATIC_SPRITE_DRAW_OFFSET_Y,
+				VISUAL_SIZE,
+				VISUAL_SIZE
+			),
 			false,
 			modulate
 		)
@@ -1808,8 +1902,10 @@ func _draw_motion_echoes(
 	if is_attacking():
 		var data: Dictionary = ATTACKS[state]
 		var startup := maxf(1.0, float(data.startup))
-		var visible_strength := clampf(float(state_frame) / startup, 0.2, 1.0)
+		var visible_strength := clampf(float(state_frame - 1) / startup, 0.0, 1.0)
 		echo_alpha *= visible_strength
+		if echo_alpha <= 0.001:
+			return
 
 	var trail_direction := Vector2(-float(facing), 0.0)
 	if velocity.length() > 90.0:
@@ -1845,14 +1941,19 @@ func _draw() -> void:
 		visual_offset *= 0.25
 		visual_rotation *= 0.2
 	visual_scale = _uniform_character_draw_scale(visual_scale)
+	var grounding_offset_y := _current_sprite_grounding_offset_y()
 
+	draw_set_transform(Vector2(0.0, grounding_offset_y), 0.0, Vector2.ONE)
 	_draw_ren_special_backdrop()
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	_draw_motion_echoes(visual_offset, visual_rotation, visual_scale)
 	draw_set_transform(visual_offset, visual_rotation, visual_scale)
 	if not _draw_character_image(visual_modulate):
 		_draw_fallback_fighter()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	draw_set_transform(Vector2(0.0, grounding_offset_y), 0.0, Vector2.ONE)
 	_draw_ren_special_foreground()
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	if state == &"blockstun":
 		var guard_points := PackedVector2Array()
