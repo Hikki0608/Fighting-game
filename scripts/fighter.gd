@@ -36,6 +36,8 @@ const REN_EFFECT_CORE := Color("efffff")
 const REN_EFFECT_LIGHT := Color("7defff")
 const REN_EFFECT_BLUE := Color("209cff")
 const REN_EFFECT_DEEP := Color("3151e8")
+const REN_PULSE_EFFECT_Y := -214.0
+const REN_PALM_EFFECT_OFFSET := Vector2(80.0, -240.0)
 
 const ATTACKS := {
 	&"light": {
@@ -113,7 +115,7 @@ const ATTACKS := {
 		"damage": 106, "chip": 8, "hitstun": 26, "blockstun": 15,
 		"range": 118.0, "height": 76.0, "push": 42.0,
 		"hitstop": 12, "label": "FLASH PALM", "effect": &"energy",
-		"bottom_offset": 22.0, "meter_hit": 13, "meter_block": 7
+		"bottom_offset": 108.0, "meter_hit": 13, "meter_block": 7
 	},
 	&"ren_rise": {
 		"startup": 5, "active": 8, "recovery": 25,
@@ -912,7 +914,7 @@ func take_projectile_request() -> Dictionary:
 	pending_projectile = false
 	return {
 		"owner_id": player_id,
-		"position": position + Vector2(facing * 58.0, -78.0),
+		"position": position + Vector2(facing * 62.0, REN_PULSE_EFFECT_Y),
 		"velocity": Vector2(facing * 510.0, 0.0),
 		"frames": 105,
 		"max_frames": 105,
@@ -921,6 +923,10 @@ func take_projectile_request() -> Dictionary:
 		"effect": &"ren_pulse",
 		"attack": REN_PULSE_PROJECTILE.duplicate()
 	}
+
+
+func ren_palm_effect_world_position() -> Vector2:
+	return position + Vector2(float(facing) * REN_PALM_EFFECT_OFFSET.x, REN_PALM_EFFECT_OFFSET.y)
 
 
 func is_invulnerable() -> bool:
@@ -1500,7 +1506,10 @@ func _draw_ren_pulse_charge() -> void:
 	var charge := clampf(float(state_frame) / 13.0, 0.0, 1.0)
 	var release := clampf(float(state_frame - 13) / 9.0, 0.0, 1.0)
 	var flicker := 0.88 + sin(float(state_frame) * 1.7) * 0.12
-	var center := Vector2(float(facing) * (42.0 + charge * 12.0), -93.0)
+	# The sprite gathers energy between both hands near the upper chest, then
+	# extends it forward. Follow that hand position instead of the fighter origin.
+	var center_x := lerpf(10.0, 64.0, release)
+	var center := Vector2(float(facing) * center_x, REN_PULSE_EFFECT_Y)
 	var phase := float(state_frame) * 0.22 * float(facing)
 	draw_circle(center, 34.0 + charge * 17.0, Color(REN_EFFECT_DEEP, 0.07 * charge))
 	draw_circle(center, 20.0 + charge * 9.0, Color(REN_EFFECT_BLUE, 0.14 * charge))
@@ -1525,14 +1534,29 @@ func _draw_ren_pulse_charge() -> void:
 		draw_arc(center, 17.0 + release * 58.0, 0.0, TAU, 30, Color(REN_EFFECT_CORE, 0.4 * release_alpha), 2.0, true)
 
 
+func _ren_palm_effect_strength() -> float:
+	var palm_data: Dictionary = ATTACKS[&"ren_palm"]
+	var active_start := int(palm_data.startup)
+	var active_end := active_start + int(palm_data.active)
+	if state_frame <= active_start:
+		return 0.0
+	if state_frame <= active_end:
+		return 1.0
+	# The sprite pulls its hand back early in recovery. Fade and retract the
+	# effect over five frames so the light never floats ahead of the hand.
+	return 1.0 - clampf(float(state_frame - active_end) / 5.0, 0.0, 1.0)
+
+
 func _draw_ren_palm_trail() -> void:
-	var motion := _attack_motion_factors()
-	var extension: float = motion.extension
+	var extension := _ren_palm_effect_strength()
 	if extension <= 0.01:
 		return
 	var pulse := 0.85 + sin(float(state_frame) * 1.25) * 0.15
-	var palm_center := Vector2(float(facing) * (52.0 + 39.0 * extension), -91.0)
-	var tail_start := Vector2(-float(facing) * (82.0 + 28.0 * extension), -104.0)
+	# Track the outstretched palm in the animation cell. At full extension the
+	# hand sits about 80 px forward and 240 px above the fighter's feet.
+	var palm_x := lerpf(40.0, REN_PALM_EFFECT_OFFSET.x, extension)
+	var palm_center := Vector2(float(facing) * palm_x, REN_PALM_EFFECT_OFFSET.y)
+	var tail_start := Vector2(-float(facing) * (82.0 + 28.0 * extension), -220.0)
 	var plume := PackedVector2Array([
 		tail_start + Vector2(0.0, -24.0),
 		palm_center + Vector2(-float(facing) * 13.0, -19.0),
@@ -1542,7 +1566,7 @@ func _draw_ren_palm_trail() -> void:
 	])
 	draw_colored_polygon(plume, Color(REN_EFFECT_DEEP, 0.12 * extension))
 	for trail_index in 5:
-		var lane_y := -126.0 + float(trail_index) * 17.0
+		var lane_y := -272.0 + float(trail_index) * 18.0
 		var start := Vector2(-float(facing) * (104.0 + float(trail_index % 2) * 19.0), lane_y)
 		var finish := palm_center + Vector2(-float(facing) * (4.0 + float(trail_index) * 3.0), (float(trail_index) - 2.0) * 5.0)
 		draw_line(start, finish, Color(REN_EFFECT_BLUE, (0.12 + float(trail_index % 2) * 0.05) * extension), 5.0 - float(trail_index) * 0.55, true)
@@ -1668,10 +1692,16 @@ func _draw_ren_special_foreground() -> void:
 	match state:
 		&"ren_pulse":
 			strength = clampf(float(state_frame) / 13.0, 0.0, 1.0) * (1.0 - clampf(float(state_frame - 17) / 11.0, 0.0, 1.0))
-			center = Vector2(float(facing) * 54.0, -93.0)
+			var pulse_release := clampf(float(state_frame - 13) / 9.0, 0.0, 1.0)
+			center = Vector2(float(facing) * lerpf(10.0, 64.0, pulse_release), REN_PULSE_EFFECT_Y)
 		&"ren_palm":
-			strength = float(_attack_motion_factors().extension)
-			center = Vector2(float(facing) * 91.0, -91.0)
+			strength = _ren_palm_effect_strength()
+			if strength <= 0.01:
+				return
+			center = Vector2(
+				float(facing) * lerpf(40.0, REN_PALM_EFFECT_OFFSET.x, strength),
+				REN_PALM_EFFECT_OFFSET.y
+			)
 		&"ren_rise":
 			strength = clampf(float(_attack_motion_factors().extension) + 0.25, 0.0, 1.0)
 			center = Vector2(float(facing) * 29.0, -139.0)

@@ -1954,7 +1954,9 @@ func _resolve_attacks() -> void:
 			continue
 		if defender.is_invulnerable():
 			continue
-		if not attacker.attack_rect().intersects(defender.hurt_rect()):
+		var attack_hitbox := attacker.attack_rect()
+		var defender_hurtbox := defender.hurt_rect()
+		if not attack_hitbox.intersects(defender_hurtbox):
 			continue
 
 		var attack_data := attacker.current_attack()
@@ -1964,13 +1966,18 @@ func _resolve_attacks() -> void:
 		var forced_push_direction := 0.0
 		if bool(attack_data.get("back_throw", false)):
 			forced_push_direction = _perform_back_throw(attacker, defender)
+		var spark_position := defender.hurt_rect().get_center()
+		if attacker.state == &"ren_palm":
+			# Flash Palm's impact belongs exactly on the outstretched hand, not
+			# at the defender's waist.
+			spark_position = attacker.ren_palm_effect_world_position()
 		_apply_attack_hit(
 			attacker,
 			defender,
 			attack_data,
 			attacker.position.x,
 			forced_push_direction,
-			defender.hurt_rect().get_center()
+			spark_position
 		)
 		break
 
