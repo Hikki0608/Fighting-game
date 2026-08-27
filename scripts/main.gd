@@ -17,6 +17,10 @@ const SCREEN_SIZE := Vector2(1152.0, 648.0)
 const SUPER_METER_SIZE := Vector2(144.0, 18.0)
 const SUPER_METER_MARGIN := Vector2(48.0, 26.0)
 const SUPER_METER_INSET := 3.0
+const REN_EFFECT_CORE := Color("efffff")
+const REN_EFFECT_LIGHT := Color("7defff")
+const REN_EFFECT_BLUE := Color("209cff")
+const REN_EFFECT_DEEP := Color("3151e8")
 const ARENA_CENTER_X := Fighter.ARENA_WIDTH * 0.5
 const CAMERA_HALF_WIDTH := SCREEN_SIZE.x * 0.5
 const CAMERA_DEAD_ZONE := 28.0
@@ -276,6 +280,9 @@ func _ready() -> void:
 func _create_world_root() -> void:
 	world_root = Node2D.new()
 	world_root.name = "World"
+	# Combat effects are drawn by Main at z=0. Keep the stage and fighters one
+	# layer below so hit sparks remain visible instead of hiding behind sprites.
+	world_root.z_index = -1
 	add_child(world_root)
 
 
@@ -2035,12 +2042,26 @@ func _apply_attack_hit(
 	attacker.gain_meter(meter_gain)
 	defender.gain_meter(3 if result.blocked else 6)
 	global_hitstop = _scaled_hitstop_frames(int(result.hitstop))
-	screen_shake = 9.0 if bool(attack_data.get("super", false)) else (8.0 if not result.blocked else 3.0)
+	var source_state: StringName = attack_data.get("source_state", attacker.state)
+	var is_super := bool(attack_data.get("super", false))
+	var is_ren_special := attacker.character_id == &"ren" and str(source_state).begins_with("ren_")
+	if is_super:
+		screen_shake = 11.0 if is_ren_special else 9.0
+	elif is_ren_special and not result.blocked:
+		screen_shake = 8.5
+	else:
+		screen_shake = 8.0 if not result.blocked else 3.0
+	var spark_duration := 24 if is_super and is_ren_special else (18 if is_ren_special else (16 if is_super else 12))
 	hit_sparks.append({
 		"position": spark_position,
-		"frames": 16 if bool(attack_data.get("super", false)) else 12,
+		"frames": spark_duration,
+		"max_frames": spark_duration,
 		"blocked": result.blocked,
-		"color": attacker.body_color.lightened(0.35)
+		"color": attacker.body_color.lightened(0.35),
+		"source_state": source_state,
+		"ren_special": is_ren_special,
+		"super": is_super,
+		"facing": attacker.facing
 	})
 	if result.back_throw:
 		announcement_sub = "BACK THROW"
@@ -2048,7 +2069,7 @@ func _apply_attack_hit(
 	elif result.combo > 1 and not result.blocked:
 		announcement_sub = "%d HIT COMBO" % result.combo
 		combat_callout_frames = 45
-	elif bool(attack_data.get("super", false)):
+	elif is_super:
 		announcement_sub = str(attack_data.get("label", "SUPER"))
 		combat_callout_frames = 60
 		if arena_ambience != null and arena_ambience.visible:
@@ -2272,9 +2293,156 @@ func _request_hud_redraw() -> void:
 	queue_redraw()
 
 
+func _draw_ren_pulse_projectile(projectile: Dictionary) -> void:
+	var projectile_position: Vector2 = projectile.position
+	var projectile_velocity: Vector2 = projectile.velocity
+	var projectile_radius := float(projectile.radius)
+	var max_frames := maxi(1, int(projectile.get("max_frames", 105)))
+	var age := float(max_frames - int(projectile.frames))
+	var phase := age * 0.31
+	var direction_x := signf(projectile_velocity.x)
+	if is_zero_approx(direction_x):
+		direction_x = 1.0
+	var forward := Vector2(direction_x, 0.0)
+	var side := Vector2(0.0, 1.0)
+
+	# A broad translucent wake makes the projectile read as a fast-moving wave,
+	# while the small echoes retain motion without a particle system.
+	var tail_length := 82.0 + sin(phase * 0.7) * 8.0
+	var tail_points := PackedVector2Array([
+		projectile_position + side * 18.0 - forward * 4.0,
+		projectile_position + forward * 18.0,
+		projectile_position - side * 18.0 - forward * 4.0,
+		projectile_position - forward * tail_length
+	])
+	draw_colored_polygon(tail_points, Color(REN_EFFECT_DEEP, 0.16))
+	for echo_index in range(5, 0, -1):
+		var echo_distance := 14.0 + float(echo_index) * 15.0
+		var echo_position := projectile_position - forward * echo_distance + side * sin(phase - float(echo_index)) * 3.5
+		var echo_scale := 1.0 - float(echo_index) * 0.12
+		draw_circle(echo_position, projectile_radius * echo_scale + 7.0, Color(REN_EFFECT_BLUE, 0.035 + float(5 - echo_index) * 0.012))
+		draw_circle(echo_position, maxf(2.0, projectile_radius * echo_scale * 0.48), Color(REN_EFFECT_LIGHT, 0.11))
+	for lane in 3:
+		var lane_offset := (float(lane) - 1.0) * 8.0
+		var line_start := projectile_position - forward * (24.0 + float(lane) * 9.0) + side * lane_offset
+		var line_end := projectile_position - forward * (72.0 + float(lane) * 15.0) + side * lane_offset * 0.35
+		draw_line(line_start, line_end, Color(REN_EFFECT_LIGHT, 0.34 - float(lane) * 0.055), 4.5 - float(lane) * 0.65, true)
+
+	draw_circle(projectile_position, projectile_radius + 18.0, Color(REN_EFFECT_DEEP, 0.1))
+	draw_circle(projectile_position, projectile_radius + 10.0, Color(REN_EFFECT_BLUE, 0.16))
+	for arc_index in 4:
+		var arc_start := phase * (1.0 if arc_index % 2 == 0 else -1.25) + float(arc_index) * TAU * 0.25
+		draw_arc(
+			projectile_position,
+			projectile_radius + 5.0 + float(arc_index % 2) * 7.0,
+			arc_start,
+			arc_start + 0.9,
+			10,
+			Color(REN_EFFECT_LIGHT, 0.82 - float(arc_index) * 0.1),
+			3.2,
+			true
+		)
+	draw_circle(projectile_position, projectile_radius, Color(REN_EFFECT_LIGHT, 0.88))
+	draw_circle(projectile_position + forward * 4.0, projectile_radius * 0.48, Color(REN_EFFECT_CORE, 0.96))
+	for mote_index in 4:
+		var mote_angle := phase + float(mote_index) * TAU / 4.0
+		var mote_offset := Vector2(cos(mote_angle), sin(mote_angle) * 0.7) * (projectile_radius + 14.0)
+		draw_circle(projectile_position + mote_offset, 2.6, Color(REN_EFFECT_CORE, 0.78))
+
+
+func _draw_ren_special_hit_spark(spark: Dictionary) -> void:
+	var spark_position: Vector2 = spark.position
+	var max_frames := maxi(1, int(spark.get("max_frames", 18)))
+	var remaining := clampf(float(spark.frames) / float(max_frames), 0.0, 1.0)
+	var progress := 1.0 - remaining
+	var is_super := bool(spark.get("super", false))
+	var blocked := bool(spark.get("blocked", false))
+	var facing_direction := float(int(spark.get("facing", 1)))
+	var source_state: StringName = spark.get("source_state", &"")
+	var radius := lerpf(22.0, 92.0 if is_super else 68.0, progress)
+	var strength := remaining * (0.7 if blocked else 1.0)
+	var rotation_phase := progress * (2.4 if is_super else 1.45) * facing_direction
+
+	draw_circle(spark_position, radius * 0.8, Color(REN_EFFECT_DEEP, 0.12 * strength))
+	draw_circle(spark_position, radius * 0.38, Color(REN_EFFECT_BLUE, 0.18 * strength))
+	var ray_count := 18 if is_super else 12
+	for ray_index in ray_count:
+		var angle := rotation_phase + float(ray_index) * TAU / float(ray_count)
+		var ray_direction := Vector2.from_angle(angle)
+		var inner_radius := 5.0 + radius * (0.12 + float(ray_index % 3) * 0.025)
+		var outer_radius := radius * (0.72 + float(ray_index % 2) * 0.28)
+		draw_line(
+			spark_position + ray_direction * inner_radius,
+			spark_position + ray_direction * outer_radius,
+			Color(REN_EFFECT_LIGHT if ray_index % 3 else REN_EFFECT_CORE, (0.62 - float(ray_index % 3) * 0.09) * strength),
+			5.0 if ray_index % 4 == 0 else 2.5,
+			true
+		)
+	for ring_index in 3:
+		var ring_radius := radius * (0.42 + float(ring_index) * 0.22)
+		var ring_alpha := (0.52 - float(ring_index) * 0.12) * strength
+		draw_arc(spark_position, ring_radius, rotation_phase + float(ring_index), rotation_phase + float(ring_index) + PI * 1.35, 24, Color(REN_EFFECT_LIGHT, ring_alpha), 4.0 - float(ring_index), true)
+
+	var impact_axis := Vector2(facing_direction, 0.0)
+	match source_state:
+		&"ren_rise":
+			impact_axis = Vector2(facing_direction * 0.3, -1.0).normalized()
+		&"ren_dive":
+			impact_axis = Vector2(facing_direction * 0.72, 0.7).normalized()
+		&"ren_super":
+			impact_axis = Vector2(facing_direction, sin(progress * PI * 3.0) * 0.35).normalized()
+	var impact_side := Vector2(-impact_axis.y, impact_axis.x)
+	for lane in 3:
+		var lane_offset := (float(lane) - 1.0) * 13.0
+		var start := spark_position - impact_axis * radius * 0.95 + impact_side * lane_offset
+		var finish := spark_position + impact_axis * radius * (0.7 + float(lane % 2) * 0.22) + impact_side * lane_offset * 0.25
+		draw_line(start, finish, Color(REN_EFFECT_CORE, (0.62 - float(lane) * 0.11) * strength), 4.0 - float(lane) * 0.65, true)
+
+	if is_super:
+		for slash_index in 2:
+			var slash_points := PackedVector2Array()
+			var slash_radius := radius * (0.78 - float(slash_index) * 0.18)
+			for step in 13:
+				var slash_t := float(step) / 12.0
+				var angle := lerpf(-1.12, 1.12, slash_t) + float(slash_index) * 0.32
+				slash_points.append(spark_position + Vector2(cos(angle) * slash_radius * facing_direction, sin(angle) * slash_radius))
+			draw_polyline(slash_points, Color(REN_EFFECT_BLUE, 0.22 * strength), 13.0 - float(slash_index) * 3.0, true)
+			draw_polyline(slash_points, Color(REN_EFFECT_CORE, 0.74 * strength), 2.5, true)
+	draw_circle(spark_position, 12.0 + remaining * 9.0, Color(REN_EFFECT_CORE, 0.9 * strength))
+
+
+func _draw_ren_super_screen_tint() -> void:
+	for fighter in fighters:
+		if fighter.character_id != &"ren" or fighter.state != &"ren_super":
+			continue
+		var charge := clampf(float(fighter.state_frame) / 6.0, 0.0, 1.0)
+		var fade := 1.0 - clampf(float(fighter.state_frame - 31) / 20.0, 0.0, 1.0)
+		var startup_flash := 1.0 - clampf(float(fighter.state_frame) / 8.0, 0.0, 1.0)
+		var strength := maxf(0.24, charge) * fade
+		var fighter_screen_position := world_root.position + fighter.position * world_root.scale
+		draw_rect(Rect2(Vector2.ZERO, SCREEN_SIZE), Color(REN_EFFECT_DEEP, 0.035 * strength + 0.065 * startup_flash), true)
+		draw_circle(fighter_screen_position + Vector2(0.0, -92.0) * world_root.scale, 245.0 * world_root.scale.x, Color(REN_EFFECT_BLUE, 0.035 * strength))
+		for line_index in 12:
+			var line_angle := float(line_index) * TAU / 12.0 + float(fighter.state_frame) * 0.035
+			var line_direction := Vector2.from_angle(line_angle)
+			var line_center := fighter_screen_position + Vector2(0.0, -92.0) * world_root.scale
+			draw_line(
+				line_center + line_direction * (112.0 + float(line_index % 3) * 18.0),
+				line_center + line_direction * (190.0 + float(line_index % 2) * 42.0),
+				Color(REN_EFFECT_LIGHT, 0.075 * strength),
+				2.0,
+				true
+			)
+		draw_rect(Rect2(0.0, 0.0, SCREEN_SIZE.x, 4.0), Color(REN_EFFECT_LIGHT, 0.22 * strength), true)
+		draw_rect(Rect2(0.0, SCREEN_SIZE.y - 4.0, SCREEN_SIZE.x, 4.0), Color(REN_EFFECT_BLUE, 0.18 * strength), true)
+		return
+
+
 func _draw() -> void:
 	if phase == &"menu" or phase == &"stage_select" or phase == &"character_select":
 		return
+
+	_draw_ren_super_screen_tint()
 
 	# Health and round HUD.
 	draw_rect(Rect2(48, 40, 450, 34), Color("101820"), true)
@@ -2387,6 +2555,9 @@ func _draw() -> void:
 	var world_draw_scale := world_root.scale if world_root != null else Vector2.ONE
 	draw_set_transform(world_draw_offset, 0.0, world_draw_scale)
 	for projectile in projectiles:
+		if StringName(projectile.get("effect", &"")) == &"ren_pulse":
+			_draw_ren_pulse_projectile(projectile)
+			continue
 		var projectile_color: Color = projectile.color
 		var projectile_position: Vector2 = projectile.position
 		var projectile_radius := float(projectile.radius)
@@ -2405,6 +2576,9 @@ func _draw() -> void:
 			)
 
 	for spark in hit_sparks:
+		if bool(spark.get("ren_special", false)):
+			_draw_ren_special_hit_spark(spark)
+			continue
 		var spark_color := Color("8defff") if spark.blocked else Color(spark.get("color", Color("fff19a")))
 		var radius := float(spark.frames) * 2.5
 		draw_circle(spark.position, radius * 0.5, Color(spark_color, 0.16))

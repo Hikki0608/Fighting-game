@@ -32,6 +32,10 @@ const KEYBOARD_LIGHT_KEY := KEY_J
 const KEYBOARD_HEAVY_KEY := KEY_K
 const KEYBOARD_SPECIAL_KEY := KEY_L
 const KEYBOARD_THROW_KEY := KEY_I
+const REN_EFFECT_CORE := Color("efffff")
+const REN_EFFECT_LIGHT := Color("7defff")
+const REN_EFFECT_BLUE := Color("209cff")
+const REN_EFFECT_DEEP := Color("3151e8")
 
 const ATTACKS := {
 	&"light": {
@@ -183,7 +187,8 @@ const ATTACKS := {
 const REN_PULSE_PROJECTILE := {
 	"damage": 72, "chip": 8, "hitstun": 20, "blockstun": 13,
 	"push": 24.0, "hitstop": 8, "label": "AZURE PULSE",
-	"meter_hit": 10, "meter_block": 5, "projectile": true
+	"meter_hit": 10, "meter_block": 5, "projectile": true,
+	"effect": &"azure_pulse_hit", "source_state": &"ren_pulse"
 }
 
 var player_id := 0
@@ -910,8 +915,10 @@ func take_projectile_request() -> Dictionary:
 		"position": position + Vector2(facing * 58.0, -78.0),
 		"velocity": Vector2(facing * 510.0, 0.0),
 		"frames": 105,
+		"max_frames": 105,
 		"radius": 18.0,
 		"color": body_color,
+		"effect": &"ren_pulse",
 		"attack": REN_PULSE_PROJECTILE.duplicate()
 	}
 
@@ -1445,6 +1452,275 @@ func _uniform_character_draw_scale(suggested_scale: Vector2) -> Vector2:
 	return Vector2(horizontal_direction, 1.0)
 
 
+func _draw_segmented_energy_ring(
+	center: Vector2,
+	radius: float,
+	phase: float,
+	color: Color,
+	width: float,
+	segment_count := 3
+) -> void:
+	for segment in segment_count:
+		var segment_start := phase + float(segment) * TAU / float(segment_count)
+		draw_arc(
+			center,
+			radius,
+			segment_start,
+			segment_start + TAU * 0.19,
+			10,
+			color,
+			width,
+			true
+		)
+
+
+func _draw_ren_slash_crescent(
+	center: Vector2,
+	radius: float,
+	strength: float,
+	vertical_shift := 0.0
+) -> void:
+	var outer_points := PackedVector2Array()
+	var inner_points := PackedVector2Array()
+	for step in 13:
+		var slash_t := float(step) / 12.0
+		var angle := lerpf(-1.18, 1.18, slash_t)
+		var curve_offset := Vector2(
+			cos(angle) * radius * float(facing),
+			sin(angle) * radius + vertical_shift
+		)
+		outer_points.append(center + curve_offset)
+		inner_points.append(center + curve_offset * 0.82)
+	draw_polyline(outer_points, Color(REN_EFFECT_BLUE, 0.18 * strength), 14.0, true)
+	draw_polyline(outer_points, Color(REN_EFFECT_LIGHT, 0.72 * strength), 4.0, true)
+	draw_polyline(inner_points, Color(REN_EFFECT_CORE, 0.68 * strength), 2.0, true)
+
+
+func _draw_ren_pulse_charge() -> void:
+	var charge := clampf(float(state_frame) / 13.0, 0.0, 1.0)
+	var release := clampf(float(state_frame - 13) / 9.0, 0.0, 1.0)
+	var flicker := 0.88 + sin(float(state_frame) * 1.7) * 0.12
+	var center := Vector2(float(facing) * (42.0 + charge * 12.0), -93.0)
+	var phase := float(state_frame) * 0.22 * float(facing)
+	draw_circle(center, 34.0 + charge * 17.0, Color(REN_EFFECT_DEEP, 0.07 * charge))
+	draw_circle(center, 20.0 + charge * 9.0, Color(REN_EFFECT_BLUE, 0.14 * charge))
+	for ring_index in 3:
+		_draw_segmented_energy_ring(
+			center,
+			14.0 + charge * 8.0 + float(ring_index) * 10.0,
+			phase * (1.0 if ring_index % 2 == 0 else -1.0),
+			Color(REN_EFFECT_LIGHT if ring_index < 2 else REN_EFFECT_BLUE, (0.28 - float(ring_index) * 0.055) * charge),
+			3.0 - float(ring_index) * 0.45,
+			4
+		)
+	for ray_index in 8:
+		var angle := phase + float(ray_index) * TAU / 8.0
+		var ray_direction := Vector2.from_angle(angle)
+		var ray_start := center + ray_direction * (24.0 + charge * 8.0)
+		var ray_end := center + ray_direction * (32.0 + charge * (13.0 + float(ray_index % 2) * 8.0))
+		draw_line(ray_start, ray_end, Color(REN_EFFECT_CORE, 0.28 * charge * flicker), 2.0, true)
+	if release > 0.0:
+		var release_alpha := 1.0 - release
+		draw_arc(center, 24.0 + release * 78.0, 0.0, TAU, 36, Color(REN_EFFECT_LIGHT, 0.52 * release_alpha), 5.0, true)
+		draw_arc(center, 17.0 + release * 58.0, 0.0, TAU, 30, Color(REN_EFFECT_CORE, 0.4 * release_alpha), 2.0, true)
+
+
+func _draw_ren_palm_trail() -> void:
+	var motion := _attack_motion_factors()
+	var extension: float = motion.extension
+	if extension <= 0.01:
+		return
+	var pulse := 0.85 + sin(float(state_frame) * 1.25) * 0.15
+	var palm_center := Vector2(float(facing) * (52.0 + 39.0 * extension), -91.0)
+	var tail_start := Vector2(-float(facing) * (82.0 + 28.0 * extension), -104.0)
+	var plume := PackedVector2Array([
+		tail_start + Vector2(0.0, -24.0),
+		palm_center + Vector2(-float(facing) * 13.0, -19.0),
+		palm_center + Vector2(float(facing) * 24.0, 0.0),
+		palm_center + Vector2(-float(facing) * 13.0, 19.0),
+		tail_start + Vector2(0.0, 27.0)
+	])
+	draw_colored_polygon(plume, Color(REN_EFFECT_DEEP, 0.12 * extension))
+	for trail_index in 5:
+		var lane_y := -126.0 + float(trail_index) * 17.0
+		var start := Vector2(-float(facing) * (104.0 + float(trail_index % 2) * 19.0), lane_y)
+		var finish := palm_center + Vector2(-float(facing) * (4.0 + float(trail_index) * 3.0), (float(trail_index) - 2.0) * 5.0)
+		draw_line(start, finish, Color(REN_EFFECT_BLUE, (0.12 + float(trail_index % 2) * 0.05) * extension), 5.0 - float(trail_index) * 0.55, true)
+	draw_circle(palm_center, 31.0, Color(REN_EFFECT_BLUE, 0.11 * extension))
+	draw_circle(palm_center, 16.0 + pulse * 3.0, Color(REN_EFFECT_LIGHT, 0.22 * extension))
+	_draw_segmented_energy_ring(palm_center, 25.0 + pulse * 4.0, float(state_frame) * -0.32, Color(REN_EFFECT_CORE, 0.62 * extension), 3.5, 3)
+
+
+func _draw_ren_rise_trail() -> void:
+	var motion := _attack_motion_factors()
+	var strength := clampf(float(motion.windup) + float(motion.extension), 0.0, 1.0)
+	var phase := float(state_frame) * 0.3
+	var ground_y := GROUND_Y - position.y - 2.0
+	for ring_index in 3:
+		var ground_radius := 34.0 + float(ring_index) * 25.0 + strength * 9.0
+		draw_arc(Vector2(0.0, ground_y), ground_radius, PI + 0.18, TAU - 0.18, 22, Color(REN_EFFECT_BLUE, (0.19 - float(ring_index) * 0.045) * strength), 4.0 - float(ring_index) * 0.7, true)
+	for lane in 3:
+		var trail_points := PackedVector2Array()
+		for step in 12:
+			var trail_t := float(step) / 11.0
+			var sway := sin(trail_t * TAU * 1.4 + phase + float(lane) * 1.8)
+			trail_points.append(Vector2(
+				float(facing) * (-27.0 + trail_t * 58.0) + sway * (8.0 + float(lane) * 2.0),
+				18.0 - trail_t * (190.0 + float(lane) * 21.0)
+			))
+		draw_polyline(trail_points, Color(REN_EFFECT_BLUE, (0.22 - float(lane) * 0.035) * strength), 10.0 - float(lane) * 2.0, true)
+		draw_polyline(trail_points, Color(REN_EFFECT_LIGHT, (0.58 - float(lane) * 0.1) * strength), 2.5, true)
+	for shard_index in 6:
+		var shard_x := float(facing) * (-54.0 + float(shard_index) * 20.0)
+		var shard_y := 6.0 - float((shard_index * 31 + state_frame * 13) % 128)
+		draw_line(Vector2(shard_x, shard_y + 18.0), Vector2(shard_x + float(facing) * 7.0, shard_y), Color(REN_EFFECT_CORE, 0.34 * strength), 2.0, true)
+
+
+func _draw_ren_dive_trail() -> void:
+	var motion := _attack_motion_factors()
+	var strength := clampf(float(motion.windup) + float(motion.extension), 0.0, 1.0)
+	var core := Vector2(float(facing) * 30.0, -43.0)
+	var tail_direction := Vector2(-float(facing), -0.82).normalized()
+	var side_direction := Vector2(-tail_direction.y, tail_direction.x)
+	var tail_length := 105.0 + clampf(velocity.length() / 9.0, 0.0, 70.0)
+	var tail := core + tail_direction * tail_length
+	var plume := PackedVector2Array([
+		core + side_direction * 20.0,
+		core + Vector2(float(facing) * 26.0, 12.0),
+		core - side_direction * 20.0,
+		tail
+	])
+	draw_colored_polygon(plume, Color(REN_EFFECT_DEEP, 0.14 * strength))
+	for trail_index in 5:
+		var lane := float(trail_index) - 2.0
+		var start := core + side_direction * lane * 8.0
+		var end := tail + side_direction * lane * 3.0 + tail_direction * float(trail_index % 2) * 17.0
+		draw_line(start, end, Color(REN_EFFECT_BLUE, (0.3 - absf(lane) * 0.035) * strength), 7.0 - absf(lane) * 1.2, true)
+	draw_circle(core, 27.0, Color(REN_EFFECT_BLUE, 0.13 * strength))
+	_draw_segmented_energy_ring(core, 24.0, float(state_frame) * 0.38, Color(REN_EFFECT_LIGHT, 0.65 * strength), 3.5, 4)
+
+
+func _ren_super_hit_pulse() -> float:
+	var hit_pulse := 0.0
+	for hit_frame in [7, 11, 15, 19, 25]:
+		hit_pulse = maxf(hit_pulse, 1.0 - absf(float(state_frame - hit_frame)) / 3.0)
+	return clampf(hit_pulse, 0.0, 1.0)
+
+
+func _draw_ren_super_backdrop() -> void:
+	var charge := clampf(float(state_frame) / 6.0, 0.0, 1.0)
+	var fade := 1.0 - clampf(float(state_frame - 28) / 23.0, 0.0, 1.0)
+	var strength := maxf(charge, 0.2) * fade
+	var phase := float(state_frame) * 0.18
+	var halo_center := Vector2(0.0, -102.0)
+	draw_circle(halo_center, 112.0, Color(REN_EFFECT_DEEP, 0.065 * strength))
+	for ring_index in 4:
+		_draw_segmented_energy_ring(
+			halo_center,
+			48.0 + float(ring_index) * 20.0 + sin(phase + float(ring_index)) * 4.0,
+			phase * (1.0 if ring_index % 2 == 0 else -1.35),
+			Color(REN_EFFECT_LIGHT if ring_index < 2 else REN_EFFECT_BLUE, (0.3 - float(ring_index) * 0.05) * strength),
+			4.5 - float(ring_index) * 0.65,
+			4 + ring_index
+		)
+	for ray_index in 16:
+		var angle := phase * 0.35 + float(ray_index) * TAU / 16.0
+		var direction := Vector2.from_angle(angle)
+		var inner := 73.0 + float(ray_index % 3) * 7.0
+		var outer := inner + 21.0 + float(ray_index % 2) * 17.0
+		draw_line(halo_center + direction * inner, halo_center + direction * outer, Color(REN_EFFECT_CORE, 0.19 * strength), 2.0, true)
+	if state_frame >= 3 and state_frame <= 31:
+		for speed_line in 9:
+			var line_y := -176.0 + float(speed_line) * 19.0
+			var stagger := float((speed_line * 29 + state_frame * 17) % 74)
+			var line_start := Vector2(-float(facing) * (126.0 + stagger), line_y)
+			var line_end := Vector2(float(facing) * (46.0 + stagger * 0.15), line_y + sin(float(speed_line) + phase) * 7.0)
+			draw_line(line_start, line_end, Color(REN_EFFECT_BLUE, 0.17 * fade), 3.0 + float(speed_line % 3), true)
+	var hit_pulse := _ren_super_hit_pulse()
+	if hit_pulse > 0.0:
+		var strike_center := Vector2(float(facing) * 78.0, -94.0 + sin(float(state_frame) * 1.4) * 12.0)
+		draw_circle(strike_center, 52.0 + hit_pulse * 24.0, Color(REN_EFFECT_BLUE, 0.15 * hit_pulse))
+		_draw_ren_slash_crescent(strike_center, 58.0 + hit_pulse * 23.0, hit_pulse)
+		_draw_ren_slash_crescent(strike_center + Vector2(0.0, 8.0), 43.0 + hit_pulse * 15.0, hit_pulse * 0.75, 4.0)
+
+
+func _draw_ren_special_backdrop() -> void:
+	if character_id != &"ren":
+		return
+	match state:
+		&"ren_pulse":
+			_draw_ren_pulse_charge()
+		&"ren_palm":
+			_draw_ren_palm_trail()
+		&"ren_rise":
+			_draw_ren_rise_trail()
+		&"ren_dive":
+			_draw_ren_dive_trail()
+		&"ren_super":
+			_draw_ren_super_backdrop()
+
+
+func _draw_ren_special_foreground() -> void:
+	if character_id != &"ren":
+		return
+	var center := Vector2.ZERO
+	var strength := 0.0
+	match state:
+		&"ren_pulse":
+			strength = clampf(float(state_frame) / 13.0, 0.0, 1.0) * (1.0 - clampf(float(state_frame - 17) / 11.0, 0.0, 1.0))
+			center = Vector2(float(facing) * 54.0, -93.0)
+		&"ren_palm":
+			strength = float(_attack_motion_factors().extension)
+			center = Vector2(float(facing) * 91.0, -91.0)
+		&"ren_rise":
+			strength = clampf(float(_attack_motion_factors().extension) + 0.25, 0.0, 1.0)
+			center = Vector2(float(facing) * 29.0, -139.0)
+		&"ren_dive":
+			strength = clampf(float(_attack_motion_factors().extension) + 0.2, 0.0, 1.0)
+			center = Vector2(float(facing) * 31.0, -43.0)
+		&"ren_super":
+			strength = maxf(0.35, _ren_super_hit_pulse()) * (1.0 - clampf(float(state_frame - 33) / 18.0, 0.0, 1.0))
+			center = Vector2(float(facing) * 76.0, -94.0 + sin(float(state_frame) * 1.4) * 12.0)
+		_:
+			return
+	var core_pulse := 0.86 + sin(float(state_frame) * 1.8) * 0.14
+	draw_circle(center, 20.0 + core_pulse * 7.0, Color(REN_EFFECT_BLUE, 0.13 * strength))
+	draw_circle(center, 9.0 + core_pulse * 4.0, Color(REN_EFFECT_LIGHT, 0.54 * strength))
+	draw_circle(center, 3.5 + core_pulse * 2.0, Color(REN_EFFECT_CORE, 0.92 * strength))
+	for mote_index in 4:
+		var mote_angle := float(state_frame) * 0.28 + float(mote_index) * TAU / 4.0
+		var mote_distance := 25.0 + float(mote_index % 2) * 9.0
+		var mote_position := center + Vector2.from_angle(mote_angle) * mote_distance
+		draw_circle(mote_position, 2.4, Color(REN_EFFECT_CORE, 0.55 * strength))
+	match state:
+		&"ren_palm":
+			_draw_ren_slash_crescent(center + Vector2(float(facing) * 7.0, 0.0), 38.0, strength * 0.72)
+			for ray_index in 5:
+				var ray_y := (float(ray_index) - 2.0) * 10.0
+				draw_line(
+					center - Vector2(float(facing) * 74.0, -ray_y),
+					center + Vector2(float(facing) * (20.0 + float(ray_index % 2) * 12.0), ray_y * 0.28),
+					Color(REN_EFFECT_LIGHT, 0.42 * strength),
+					3.5,
+					true
+				)
+		&"ren_rise":
+			draw_line(center + Vector2(-float(facing) * 10.0, 72.0), center + Vector2(float(facing) * 13.0, -54.0), Color(REN_EFFECT_CORE, 0.48 * strength), 5.0, true)
+		&"ren_dive":
+			var dive_tail := Vector2(-float(facing), -0.82).normalized()
+			for lane in 3:
+				var lane_offset := Vector2(-dive_tail.y, dive_tail.x) * (float(lane) - 1.0) * 7.0
+				draw_line(center + lane_offset, center + dive_tail * (92.0 + float(lane) * 18.0) + lane_offset, Color(REN_EFFECT_LIGHT, (0.5 - float(lane) * 0.08) * strength), 5.0 - float(lane) * 0.7, true)
+		&"ren_super":
+			var super_pulse := maxf(0.3, _ren_super_hit_pulse()) * strength
+			_draw_ren_slash_crescent(center, 72.0 + super_pulse * 27.0, super_pulse)
+			_draw_ren_slash_crescent(center + Vector2(-float(facing) * 12.0, 8.0), 54.0 + super_pulse * 19.0, super_pulse * 0.82, 6.0)
+			for ray_index in 8:
+				var ray_angle := float(ray_index) * TAU / 8.0 + float(state_frame) * 0.17
+				var ray_direction := Vector2.from_angle(ray_angle)
+				draw_line(center + ray_direction * 18.0, center + ray_direction * (64.0 + float(ray_index % 2) * 22.0), Color(REN_EFFECT_CORE, 0.42 * super_pulse), 3.0, true)
+
+
 func _draw_motion_accents() -> void:
 	if landing_frames > 0:
 		var landing_strength := float(landing_frames) / 8.0
@@ -1540,11 +1816,13 @@ func _draw() -> void:
 		visual_rotation *= 0.2
 	visual_scale = _uniform_character_draw_scale(visual_scale)
 
+	_draw_ren_special_backdrop()
 	_draw_motion_echoes(visual_offset, visual_rotation, visual_scale)
 	draw_set_transform(visual_offset, visual_rotation, visual_scale)
 	if not _draw_character_image(visual_modulate):
 		_draw_fallback_fighter()
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	_draw_ren_special_foreground()
 
 	if state == &"blockstun":
 		var guard_points := PackedVector2Array()
