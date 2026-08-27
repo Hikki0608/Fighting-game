@@ -7,7 +7,9 @@ const ARENA_LEFT := 76.0
 const ARENA_RIGHT := ARENA_WIDTH - 76.0
 const GRAVITY := 2350.0
 const WALK_SPEED := 275.0
-const JUMP_SPEED := -850.0
+# Tuned against the closest battle-camera zoom so the neutral jump pose reaches
+# the space just below the health HUD without entering it.
+const JUMP_SPEED := -1100.0
 const BASE_VISUAL_SIZE := 176.0
 const VISUAL_SIZE := 288.0
 const VISUAL_COLLISION_SCALE := VISUAL_SIZE / BASE_VISUAL_SIZE
@@ -19,6 +21,8 @@ const CROUCH_HURTBOX_HEIGHT := VISUAL_SIZE * 0.64
 const SPRITE_SHEET_CELL_SIZE := 256.0
 const SPRITE_DRAW_OFFSET_Y := 8.0
 const STATIC_SPRITE_DRAW_OFFSET_Y := 7.0
+const VEL_JUMP_TUCK_BLEND_END := 0.32
+const VEL_JUMP_TUCK_OFFSET_Y := 84.4
 const REN_ANIMATION_BASIC := 0
 const REN_ANIMATION_GROUND := 1
 const REN_ANIMATION_AIR_SPECIAL := 2
@@ -1483,7 +1487,22 @@ func _visual_pose() -> Dictionary:
 				var vertical_speed := clampf(velocity.y / JUMP_SPEED, -1.0, 1.0)
 				var apex_tuck := 1.0 - clampf(absf(velocity.y) / absf(JUMP_SPEED), 0.0, 1.0)
 				visual_offset = Vector2(facing * vertical_speed * 2.0, -apex_tuck * 5.0)
-				visual_rotation = facing * (-0.075 - vertical_speed * 0.055)
+				var jump_rotation := facing * (-0.075 - vertical_speed * 0.055)
+				visual_rotation = jump_rotation
+				if character_id == &"vel":
+					# Vel currently uses a tall single-image sprite. Tuck it sideways near
+					# the apex so the higher jump remains inside the HUD-safe area.
+					var tuck_blend := _smooth_motion(clampf(
+						apex_tuck / VEL_JUMP_TUCK_BLEND_END,
+						0.0,
+						1.0
+					))
+					visual_rotation = lerp_angle(
+						jump_rotation,
+						float(facing) * PI * 0.5,
+						tuck_blend
+					)
+					visual_offset.y -= VEL_JUMP_TUCK_OFFSET_Y * tuck_blend
 				visual_scale *= Vector2(0.96 + apex_tuck * 0.08, 1.07 - apex_tuck * 0.13)
 			&"vel_shadow":
 				if state_frame <= 7:
