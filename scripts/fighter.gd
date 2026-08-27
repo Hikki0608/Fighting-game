@@ -26,6 +26,7 @@ const REN_ANIMATION_REACTION := 4
 const MAX_METER := 100
 const INPUT_BUFFER_FRAMES := 7
 const SUPER_CHORD_BUFFER_FRAMES := 5
+const KNOCKOUT_PRONE_FRAME := 35
 const AMBIENT_MOTION_SAMPLE_FRAMES := 2
 const KEYBOARD_LIGHT_KEY := KEY_J
 const KEYBOARD_HEAVY_KEY := KEY_K
@@ -193,6 +194,7 @@ var accent_color := Color("e9fbff")
 var character_texture: Texture2D
 var character_animation_textures: Array[Texture2D] = []
 var health := 1000
+var knocked_out := false
 var meter := 0
 var facing := 1
 var velocity := Vector2.ZERO
@@ -317,6 +319,7 @@ func spend_meter(amount: int) -> bool:
 func reset_for_round(spawn_position: Vector2) -> void:
 	position = spawn_position
 	health = 1000
+	knocked_out = false
 	velocity = Vector2.ZERO
 	state = &"idle"
 	state_frame = 0
@@ -349,6 +352,11 @@ func reset_for_round(spawn_position: Vector2) -> void:
 	input_history.clear()
 	_invalidate_visual_cache()
 	_queue_visual_redraw_if_needed()
+
+
+func revive_for_training() -> void:
+	health = maxi(1, health)
+	knocked_out = false
 
 
 func capture_input() -> void:
@@ -692,6 +700,9 @@ func _step_stun() -> void:
 func _step_knockdown() -> void:
 	state_frame += 1
 	velocity.x = move_toward(velocity.x, 0.0, 12.0)
+	if knocked_out:
+		state_frame = mini(state_frame, KNOCKOUT_PRONE_FRAME)
+		return
 	if state_frame >= 48:
 		state = &"idle"
 		state_frame = 0
@@ -818,8 +829,15 @@ func hurt_rect() -> Rect2:
 			fall_progress = 1.0 - clampf(float(state_frame - 35) / 13.0, 0.0, 1.0)
 		width = lerpf(HURTBOX_WIDTH, HURTBOX_HEIGHT, fall_progress)
 		height = lerpf(HURTBOX_HEIGHT, HURTBOX_WIDTH, fall_progress)
-		center_x -= float(facing) * 42.0 * fall_progress
+		center_x += _knockdown_horizontal_offset(fall_progress)
 	return Rect2(center_x - width * 0.5, position.y - height, width, height)
+
+
+func _knockdown_horizontal_offset(progress: float) -> float:
+	if knocked_out:
+		# Center a rotated single-image fighter around the point where they fell.
+		return float(facing) * VISUAL_SIZE * 0.47 * progress
+	return -float(facing) * 42.0 * progress
 
 
 func receive_attack(data: Dictionary, attacker_x: float, forced_push_direction := 0.0) -> Dictionary:
@@ -827,6 +845,7 @@ func receive_attack(data: Dictionary, attacker_x: float, forced_push_direction :
 	var blocked := not unblockable and _is_blocking(attacker_x, data)
 	var damage: int = int(data.chip) if blocked else int(data.damage)
 	health = maxi(0, health - damage)
+	var is_ko := health <= 0
 	state_frame = 0
 	attack_connected = false
 	attack_has_connected = false
@@ -837,14 +856,24 @@ func receive_attack(data: Dictionary, attacker_x: float, forced_push_direction :
 		push_direction = signf(forced_push_direction)
 	velocity.x = push_direction * float(data.push) * (0.65 if blocked else 1.0)
 
-	if blocked:
+	if is_ko:
+		knocked_out = true
+		block_stance_crouching = false
+		if not blocked:
+			combo_received += 1
+		state = &"knockdown"
+		last_hit_result = "HIT:%d" % int(data.hitstun)
+		velocity.y = float(data.get("launch_y", -330.0))
+	elif blocked:
+		knocked_out = false
 		block_stance_crouching = intent.axis.y > 0.5
 		state = &"blockstun"
 		last_hit_result = "BLOCK:%d" % int(data.blockstun)
 	else:
+		knocked_out = false
 		combo_received += 1
 		var anti_air_knockdown := bool(data.get("anti_air", false)) and not is_on_ground()
-		var causes_knockdown := health <= 0 or bool(data.get("knockdown", false)) or anti_air_knockdown
+		var causes_knockdown := bool(data.get("knockdown", false)) or anti_air_knockdown
 		state = &"knockdown" if causes_knockdown else &"hitstun"
 		last_hit_result = "HIT:%d" % int(data.hitstun)
 		if state == &"knockdown":
@@ -854,7 +883,7 @@ func receive_attack(data: Dictionary, attacker_x: float, forced_push_direction :
 	return {
 		"blocked": blocked,
 		"damage": damage,
-		"ko": health <= 0,
+		"ko": is_ko,
 		"hitstop": int(data.hitstop),
 		"combo": combo_received,
 		"label": str(data.get("label", "HIT")),
@@ -1075,6 +1104,8 @@ func _stun_sprite_frame(default_duration: int, result_prefix: String) -> int:
 
 
 func _knockdown_sprite_frame() -> int:
+	if knocked_out:
+		return 0 if state_frame <= 5 else 1
 	if state_frame <= 5:
 		return 0
 	if state_frame <= 14:
@@ -1377,18 +1408,19 @@ func _visual_pose() -> Dictionary:
 				visual_scale *= Vector2(1.04, 0.78 if block_stance_crouching else 0.96)
 				visual_modulate = Color(0.72, 0.94, 1.0, 1.0)
 			&"knockdown":
+				var prone_offset_x := _knockdown_horizontal_offset(1.0)
 				if state_frame <= 14:
 					var fall_t := _smooth_motion(float(state_frame) / 14.0)
-					visual_offset = Vector2(-facing * 42.0 * fall_t, -8.0 * fall_t)
+					visual_offset = Vector2(_knockdown_horizontal_offset(fall_t), -8.0 * fall_t)
 					visual_rotation = -facing * 1.25 * fall_t
 					visual_scale *= Vector2(1.0 - fall_t * 0.14, 1.0 - fall_t * 0.1)
 				elif state_frame <= 35:
-					visual_offset = Vector2(-42.0 * facing, -8.0 + sin(float(state_frame) * 0.65) * 1.2)
+					visual_offset = Vector2(prone_offset_x, -8.0 + sin(float(state_frame) * 0.65) * 1.2)
 					visual_rotation = -1.25 * facing
 					visual_scale *= 0.86
 				else:
 					var rise_t := _smooth_motion(float(state_frame - 35) / 13.0)
-					visual_offset = Vector2(-42.0 * facing * (1.0 - rise_t), -8.0 * (1.0 - rise_t))
+					visual_offset = Vector2(prone_offset_x * (1.0 - rise_t), -8.0 * (1.0 - rise_t))
 					visual_rotation = -1.25 * facing * (1.0 - rise_t)
 					visual_scale *= Vector2(0.86 + rise_t * 0.14, 0.86 + rise_t * 0.14)
 

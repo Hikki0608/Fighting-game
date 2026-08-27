@@ -1408,6 +1408,11 @@ func _physics_process(delta: float) -> void:
 		if phase_frames <= 0:
 			round_number += 1
 			_start_round()
+	elif phase == &"match_over":
+		# Keep post-KO movement active so the defeated fighter can finish falling.
+		for i in fighters.size():
+			fighters[i].simulate(fighters[1 - i], false)
+		_constrain_fighters_to_camera()
 
 	_update_effects()
 	_update_ui()
@@ -2050,7 +2055,7 @@ func _apply_attack_hit(
 			arena_ambience.pulse_for_super()
 	if result.ko:
 		if game_mode == MODE_TRAINING:
-			defender.health = 1
+			defender.revive_for_training()
 		else:
 			_finish_round()
 
