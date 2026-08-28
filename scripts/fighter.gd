@@ -31,6 +31,17 @@ const REN_ANIMATION_GROUND := 1
 const REN_ANIMATION_AIR_SPECIAL := 2
 const REN_ANIMATION_SPECIAL := 3
 const REN_ANIMATION_REACTION := 4
+const SPRITE_TRANSITION_FRAMES := 1
+# Vel's generated sheets use slightly different apparent body scales between
+# action rows. These restrained multipliers align his head and limb proportions
+# to the idle row without flattening intentional crouched or airborne poses.
+const VEL_SPRITE_ROW_SCALES := [
+	[1.0, 1.16, 1.08, 1.12, 1.1],
+	[1.02, 1.0, 1.0, 1.0, 0.98],
+	[1.0, 1.0, 1.05, 1.06, 1.0],
+	[1.06, 1.14, 1.08, 1.07, 1.07],
+	[1.0, 1.02, 1.07, 1.12, 1.07]
+]
 const REN_GROUNDED_TARGET_BOTTOM_GAP := 7.0
 const REN_BASIC_BOTTOM_GAPS := [
 	[11, 11, 11, 11, 11],
@@ -291,6 +302,9 @@ var throw_backwards := false
 var air_attack_used := false
 var motion_tick := 0
 var landing_frames := 0
+var sprite_transition_from := Vector3i(-1, -1, -1)
+var sprite_transition_target: StringName = &""
+var sprite_transition_frames := 0
 var last_visual_state: StringName = &""
 var last_visual_frame := -1
 var last_visual_facing := 0
@@ -299,6 +313,7 @@ var last_visual_back_throw := false
 var last_visual_debug := false
 var last_visual_attack_active := false
 var last_visual_meter := -1
+var last_visual_transition_frames := -1
 
 
 func setup(
@@ -341,6 +356,7 @@ func configure_character(
 		for animation_texture in animation_sources:
 			if animation_texture is Texture2D:
 				character_animation_textures.append(animation_texture as Texture2D)
+	_clear_sprite_transition()
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	_invalidate_visual_cache()
 	queue_redraw()
@@ -385,6 +401,7 @@ func reset_for_round(spawn_position: Vector2) -> void:
 	air_attack_used = false
 	motion_tick = 0
 	landing_frames = 0
+	_clear_sprite_transition()
 	previous_buttons = {
 		"light": false,
 		"heavy": false,
@@ -510,6 +527,11 @@ func _tick_input_buffer() -> void:
 
 
 func simulate(opponent: Fighter, accepting_input: bool) -> void:
+	if sprite_transition_frames > 0:
+		sprite_transition_frames -= 1
+		if sprite_transition_frames == 0:
+			sprite_transition_from = Vector3i(-1, -1, -1)
+			sprite_transition_target = &""
 	motion_tick = (motion_tick + 1) % 3600
 	landing_frames = maxi(0, landing_frames - 1)
 	if state == &"hitstun" or state == &"blockstun":
@@ -534,7 +556,7 @@ func simulate(opponent: Fighter, accepting_input: bool) -> void:
 
 func _step_neutral(opponent: Fighter) -> void:
 	if not is_on_ground():
-		state = &"jump"
+		_set_state_with_visual_transition(&"jump")
 		if not air_attack_used and _is_button_buffered("special"):
 			_consume_button("special")
 			air_attack_used = true
@@ -579,17 +601,16 @@ func _step_neutral(opponent: Fighter) -> void:
 	if intent.axis.y < -0.5:
 		velocity.y = JUMP_SPEED
 		velocity.x = intent.axis.x * AIR_MOVE_SPEED
-		state = &"jump"
-		state_frame = 0
+		_set_state_with_visual_transition(&"jump")
 		return
 	if intent.axis.y > 0.5:
-		state = &"crouch"
+		_set_state_with_visual_transition(&"crouch")
 		velocity.x = 0.0
 	elif absf(intent.axis.x) > 0.1:
-		state = &"walk"
+		_set_state_with_visual_transition(&"walk")
 		velocity.x = intent.axis.x * _walk_speed_for_axis(intent.axis.x)
 	else:
-		state = &"idle"
+		_set_state_with_visual_transition(&"idle")
 		velocity.x = move_toward(velocity.x, 0.0, 70.0)
 
 	if absf(opponent.position.x - position.x) < 2.0:
@@ -683,8 +704,7 @@ func _step_attack() -> void:
 
 	var total: int = data.startup + data.active + data.recovery
 	if state_frame >= total:
-		state = &"idle" if is_on_ground() else &"jump"
-		state_frame = 0
+		_set_state_with_visual_transition(&"idle" if is_on_ground() else &"jump")
 		attack_connected = false
 		attack_has_connected = false
 		connected_hit_frames.clear()
@@ -740,8 +760,7 @@ func _step_vel_shadow() -> void:
 			return
 
 	if state_frame >= 26:
-		state = &"idle"
-		state_frame = 0
+		_set_state_with_visual_transition(&"idle")
 
 
 func _step_stun() -> void:
@@ -753,8 +772,7 @@ func _step_stun() -> void:
 	else:
 		duration = int(last_hit_result.get_slice(":", 1)) if last_hit_result.begins_with("BLOCK:") else 10
 	if state_frame >= duration:
-		state = &"idle" if is_on_ground() else &"jump"
-		state_frame = 0
+		_set_state_with_visual_transition(&"idle" if is_on_ground() else &"jump")
 		if state == &"idle":
 			combo_received = 0
 
@@ -766,8 +784,7 @@ func _step_knockdown() -> void:
 		state_frame = mini(state_frame, KNOCKOUT_PRONE_FRAME)
 		return
 	if state_frame >= 48:
-		state = &"idle"
-		state_frame = 0
+		_set_state_with_visual_transition(&"idle")
 		combo_received = 0
 
 
@@ -781,18 +798,42 @@ func _apply_physics() -> void:
 		if was_airborne and velocity.y > 0.0:
 			landing_frames = 8
 		position.y = GROUND_Y
-		velocity.y = 0.0
 		if state == &"jump" or is_air_attack():
-			state = &"idle"
-			state_frame = 0
+			_set_state_with_visual_transition(&"idle")
 			attack_connected = false
 			attack_has_connected = false
 			connected_hit_frames.clear()
 			air_attack_used = false
 			velocity.x = move_toward(velocity.x, 0.0, 90.0)
+		velocity.y = 0.0
+
+
+func _clear_sprite_transition() -> void:
+	sprite_transition_from = Vector3i(-1, -1, -1)
+	sprite_transition_target = &""
+	sprite_transition_frames = 0
+
+
+func _begin_sprite_transition(next_state: StringName) -> void:
+	var previous_frame := _animated_sprite_frame()
+	if previous_frame.x < 0:
+		_clear_sprite_transition()
+		return
+	sprite_transition_from = previous_frame
+	sprite_transition_target = next_state
+	sprite_transition_frames = SPRITE_TRANSITION_FRAMES
+
+
+func _set_state_with_visual_transition(next_state: StringName) -> void:
+	if state == next_state:
+		return
+	_begin_sprite_transition(next_state)
+	state = next_state
+	state_frame = 0
 
 
 func change_state(next_state: StringName) -> void:
+	_begin_sprite_transition(next_state)
 	state = next_state
 	state_frame = 0
 	attack_connected = false
@@ -903,6 +944,7 @@ func _knockdown_horizontal_offset(progress: float) -> float:
 
 
 func receive_attack(data: Dictionary, attacker_x: float, forced_push_direction := 0.0) -> Dictionary:
+	_clear_sprite_transition()
 	var unblockable: bool = data.get("unblockable", false)
 	var blocked := not unblockable and _is_blocking(attacker_x, data)
 	var damage: int = int(data.chip) if blocked else int(data.damage)
@@ -1020,6 +1062,7 @@ func _invalidate_visual_cache() -> void:
 	last_visual_debug = not debug_boxes
 	last_visual_attack_active = false
 	last_visual_meter = -1
+	last_visual_transition_frames = -1
 
 
 func _queue_visual_redraw_if_needed() -> void:
@@ -1043,6 +1086,7 @@ func _queue_visual_redraw_if_needed() -> void:
 		or last_visual_debug != debug_boxes
 		or last_visual_attack_active != attack_active
 		or last_visual_meter != meter
+		or last_visual_transition_frames != sprite_transition_frames
 	)
 	if not visual_changed:
 		return
@@ -1055,6 +1099,7 @@ func _queue_visual_redraw_if_needed() -> void:
 	last_visual_debug = debug_boxes
 	last_visual_attack_active = attack_active
 	last_visual_meter = meter
+	last_visual_transition_frames = sprite_transition_frames
 	queue_redraw()
 
 
@@ -1356,6 +1401,17 @@ func _current_sprite_grounding_offset_y() -> float:
 	return _sprite_grounding_offset_y(_animated_sprite_frame())
 
 
+func _sprite_render_scale(sprite_frame: Vector3i) -> float:
+	if character_id != &"vel" or sprite_frame.x < 0:
+		return 1.0
+	if sprite_frame.x >= VEL_SPRITE_ROW_SCALES.size():
+		return 1.0
+	var sheet_scales: Array = VEL_SPRITE_ROW_SCALES[sprite_frame.x]
+	if sprite_frame.z < 0 or sprite_frame.z >= sheet_scales.size():
+		return 1.0
+	return float(sheet_scales[sprite_frame.z])
+
+
 func _draw_animated_sprite_frame(sprite_frame: Vector3i, modulate: Color) -> bool:
 	if sprite_frame.x < 0 or sprite_frame.x >= character_animation_textures.size():
 		return false
@@ -1364,13 +1420,15 @@ func _draw_animated_sprite_frame(sprite_frame: Vector3i, modulate: Color) -> boo
 		float(sprite_frame.z) * SPRITE_SHEET_CELL_SIZE
 	)
 	var grounding_offset_y := _sprite_grounding_offset_y(sprite_frame)
+	var render_scale := _sprite_render_scale(sprite_frame)
+	var rendered_size := VISUAL_SIZE * render_scale
 	draw_texture_rect_region(
 		character_animation_textures[sprite_frame.x],
 		Rect2(
-			-VISUAL_SIZE * 0.5,
-			-VISUAL_SIZE + SPRITE_DRAW_OFFSET_Y + grounding_offset_y,
-			VISUAL_SIZE,
-			VISUAL_SIZE
+			-rendered_size * 0.5,
+			(-VISUAL_SIZE + SPRITE_DRAW_OFFSET_Y + grounding_offset_y) * render_scale,
+			rendered_size,
+			rendered_size
 		),
 		Rect2(source_position, Vector2.ONE * SPRITE_SHEET_CELL_SIZE),
 		modulate
@@ -1381,6 +1439,16 @@ func _draw_animated_sprite_frame(sprite_frame: Vector3i, modulate: Color) -> boo
 func _draw_character_image(modulate: Color) -> bool:
 	var sprite_frame := _animated_sprite_frame()
 	if sprite_frame.x >= 0:
+		var transition_active := (
+			sprite_transition_frames > 0
+			and sprite_transition_target == state
+			and sprite_transition_from.x >= 0
+			and sprite_transition_from != sprite_frame
+		)
+		if transition_active:
+			# One exact bridge frame preserves the previous silhouette without the
+			# double-image blur produced by alpha-blending unrelated sprite poses.
+			return _draw_animated_sprite_frame(sprite_transition_from, modulate)
 		return _draw_animated_sprite_frame(sprite_frame, modulate)
 	if character_texture != null:
 		draw_texture_rect(
