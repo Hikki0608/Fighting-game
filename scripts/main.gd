@@ -13,6 +13,11 @@ const RenAirSpecialSpriteSheet := preload("res://assets/characters/ren_air_speci
 const RenSpecialSpriteSheet := preload("res://assets/characters/ren_special_sprites_v1.png")
 const RenReactionSpriteSheet := preload("res://assets/characters/ren_reaction_sprites_v1.png")
 const VelFighterTexture := preload("res://assets/characters/vel_fighter.png")
+const VelBasicSpriteSheet := preload("res://assets/characters/vel_basic_sprites_v1.png")
+const VelGroundSpriteSheet := preload("res://assets/characters/vel_ground_sprites_v1.png")
+const VelAirSpecialSpriteSheet := preload("res://assets/characters/vel_air_special_sprites_v1.png")
+const VelSpecialSpriteSheet := preload("res://assets/characters/vel_special_sprites_v1.png")
+const VelReactionSpriteSheet := preload("res://assets/characters/vel_reaction_sprites_v1.png")
 const SCREEN_SIZE := Vector2(1152.0, 648.0)
 const SUPER_METER_SIZE := Vector2(144.0, 18.0)
 const SUPER_METER_MARGIN := Vector2(48.0, 26.0)
@@ -91,7 +96,13 @@ const CHARACTER_ROSTER := [
 		"title": "CRIMSON HUNTER",
 		"color": Color("ff4f86"),
 		"texture": VelFighterTexture,
-		"animation_textures": []
+		"animation_textures": [
+			VelBasicSpriteSheet,
+			VelGroundSpriteSheet,
+			VelAirSpecialSpriteSheet,
+			VelSpecialSpriteSheet,
+			VelReactionSpriteSheet
+		]
 	}
 ]
 const WEB_FULLSCREEN_HELPER := """
