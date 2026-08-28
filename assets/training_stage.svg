@@ -48,18 +48,10 @@
   <rect width="1152" height="374" fill="url(#wall)"/>
   <rect width="1152" height="374" fill="url(#minor-grid)"/>
   <rect width="1152" height="374" fill="url(#major-grid)"/>
-  <g clip-path="url(#back-wall-clip)" fill="none" stroke="#2f363a" opacity="0.28">
-    <path d="M0 54H1152M0 150H1152M0 246H1152M0 342H1152" stroke-width="3"/>
-    <path d="M96 0V374M288 0V374M480 0V374M672 0V374M864 0V374M1056 0V374" stroke-width="2"/>
-  </g>
 
   <!-- Angled side walls recreate the enclosed studio-room perspective. -->
   <path d="M0 0H112L176 78V374H0Z" fill="url(#side-left)" opacity="0.42"/>
   <path d="M1152 0H1040L976 78V374H1152Z" fill="url(#side-right)" opacity="0.42"/>
-  <g fill="none" stroke="#30373b" opacity="0.58">
-    <path d="M22 0V374M54 0L72 374M86 0L124 374M118 8L176 88M0 72L176 116M0 168L176 178M0 264L176 246M0 350L176 318"/>
-    <path d="M1130 0V374M1098 0L1080 374M1066 0L1028 374M1034 8L976 88M1152 72L976 116M1152 168L976 178M1152 264L976 246M1152 350L976 318"/>
-  </g>
 
   <!-- Ceiling reference frame -->
   <path d="M112 0L176 78H976L1040 0" fill="none" stroke="#31383c" stroke-width="8" opacity="0.72"/>
@@ -69,9 +61,10 @@
   <!-- Perspective floor -->
   <path d="M0 374H1152V648H0Z" fill="url(#floor)"/>
   <g clip-path="url(#floor-clip)" fill="none" stroke="#30373b">
-    <path d="M576 356L-520 648M576 356L-376 648M576 356L-232 648M576 356L-88 648M576 356L56 648M576 356L200 648M576 356L344 648M576 356L488 648M576 356L664 648M576 356L808 648M576 356L952 648M576 356L1096 648M576 356L1240 648M576 356L1384 648M576 356L1528 648M576 356L1672 648" stroke-width="1.35" opacity="0.64"/>
-    <path d="M0 392H1152M0 414H1152M0 442H1152M0 476H1152M0 516H1152M0 562H1152M0 616H1152" stroke-width="1.25" opacity="0.65"/>
-    <path d="M0 374H1152M0 476H1152M0 616H1152" stroke-width="2.4" opacity="0.48"/>
+    <!-- The guide endpoints are 96 px apart, matching the wall's major grid. -->
+    <path d="M576 356L0 648M576 356L96 648M576 356L192 648M576 356L288 648M576 356L384 648M576 356L480 648M576 356L576 648M576 356L672 648M576 356L768 648M576 356L864 648M576 356L960 648M576 356L1056 648M576 356L1152 648" stroke-width="1.35" opacity="0.64"/>
+    <!-- Keep horizontal floor guides at a constant 40 px screen-space interval. -->
+    <path d="M0 392H1152M0 432H1152M0 472H1152M0 512H1152M0 552H1152M0 592H1152M0 632H1152" stroke-width="1.35" opacity="0.65"/>
   </g>
 
   <!-- Neutral-axis guides -->
