@@ -7,6 +7,11 @@ const ARENA_LEFT := 76.0
 const ARENA_RIGHT := ARENA_WIDTH - 76.0
 const GRAVITY := 2350.0
 const WALK_SPEED := 275.0
+const FORWARD_WALK_SPEED := 320.0
+const AIR_MOVE_SPEED := 310.0
+const AIR_ATTACK_MOVE_SPEED := 300.0
+const AIR_ATTACK_CONTROL_ACCELERATION := 40.0
+const AIR_ATTACK_DRAG := 8.0
 # Tuned against the closest battle-camera zoom so the neutral jump pose reaches
 # the space just below the health HUD without entering it.
 const JUMP_SPEED := -1100.0
@@ -547,7 +552,7 @@ func _step_neutral(opponent: Fighter) -> void:
 			air_attack_used = true
 			change_state(&"jump_heavy")
 			return
-		velocity.x = intent.axis.x * WALK_SPEED * 0.72
+		velocity.x = intent.axis.x * AIR_MOVE_SPEED
 		return
 
 	if _try_start_super():
@@ -575,7 +580,7 @@ func _step_neutral(opponent: Fighter) -> void:
 		return
 	if intent.axis.y < -0.5:
 		velocity.y = JUMP_SPEED
-		velocity.x = intent.axis.x * WALK_SPEED * 0.78
+		velocity.x = intent.axis.x * AIR_MOVE_SPEED
 		state = &"jump"
 		state_frame = 0
 		return
@@ -584,13 +589,19 @@ func _step_neutral(opponent: Fighter) -> void:
 		velocity.x = 0.0
 	elif absf(intent.axis.x) > 0.1:
 		state = &"walk"
-		velocity.x = intent.axis.x * WALK_SPEED
+		velocity.x = intent.axis.x * _walk_speed_for_axis(intent.axis.x)
 	else:
 		state = &"idle"
 		velocity.x = move_toward(velocity.x, 0.0, 70.0)
 
 	if absf(opponent.position.x - position.x) < 2.0:
 		velocity.x = 0.0
+
+
+func _walk_speed_for_axis(axis_x: float) -> float:
+	if axis_x * float(facing) > 0.0:
+		return FORWARD_WALK_SPEED
+	return WALK_SPEED
 
 
 func _try_start_super() -> bool:
@@ -662,8 +673,13 @@ func _step_attack() -> void:
 
 	if not movement_handled:
 		if bool(data.get("airborne", false)):
-			var air_target_speed: float = intent.axis.x * WALK_SPEED * 0.62
-			velocity.x = move_toward(velocity.x, air_target_speed, 18.0)
+			var has_air_input := absf(intent.axis.x) > 0.1
+			var air_target_speed: float = intent.axis.x * AIR_ATTACK_MOVE_SPEED
+			var air_acceleration: float = (
+				AIR_ATTACK_CONTROL_ACCELERATION if has_air_input
+				else AIR_ATTACK_DRAG
+			)
+			velocity.x = move_toward(velocity.x, air_target_speed, air_acceleration)
 		else:
 			velocity.x = move_toward(velocity.x, 0.0, 48.0)
 
