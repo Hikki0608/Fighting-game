@@ -26,8 +26,6 @@ const CROUCH_HURTBOX_HEIGHT := VISUAL_SIZE * 0.64
 const SPRITE_SHEET_CELL_SIZE := 256.0
 const SPRITE_DRAW_OFFSET_Y := 8.0
 const STATIC_SPRITE_DRAW_OFFSET_Y := 7.0
-const VEL_JUMP_TUCK_BLEND_END := 0.32
-const VEL_JUMP_TUCK_OFFSET_Y := 84.4
 const REN_ANIMATION_BASIC := 0
 const REN_ANIMATION_GROUND := 1
 const REN_ANIMATION_AIR_SPECIAL := 2
@@ -1194,7 +1192,7 @@ func _knockdown_sprite_frame() -> int:
 	return 4
 
 
-func _ren_super_sprite_frame() -> int:
+func _super_sprite_frame() -> int:
 	if state_frame <= 2:
 		return 0
 	var frame_thresholds := [0, 3, 6, 8, 12, 16, 20, 23, 26, 31, 35, 39, 43, 47]
@@ -1227,6 +1225,18 @@ func _animated_sprite_frame() -> Vector3i:
 			if velocity.x * float(facing) < 0.0:
 				walk_frame = 4 - walk_frame
 			return _animation_frame(REN_ANIMATION_BASIC, walk_frame, 1)
+		&"vel_shadow":
+			if state_frame <= 10:
+				return _animation_frame(
+					REN_ANIMATION_BASIC,
+					clampi(floori(float(state_frame) / 2.0), 0, 4),
+					1
+				)
+			return _animation_frame(
+				REN_ANIMATION_AIR_SPECIAL,
+				clampi(floori(float(state_frame - 10) * 5.0 / 16.0), 0, 4),
+				4
+			)
 		&"jump":
 			if velocity.y < -700.0:
 				return _animation_frame(REN_ANIMATION_BASIC, 0, 2)
@@ -1269,12 +1279,16 @@ func _animated_sprite_frame() -> Vector3i:
 			return _animation_frame(REN_ANIMATION_AIR_SPECIAL, _basic_attack_sprite_frame(), 3)
 		&"ren_palm":
 			return _animation_frame(REN_ANIMATION_AIR_SPECIAL, _basic_attack_sprite_frame(), 4)
-		&"ren_rise":
+		&"vel_rake":
+			return _animation_frame(REN_ANIMATION_AIR_SPECIAL, _basic_attack_sprite_frame(), 3)
+		&"vel_pounce":
+			return _animation_frame(REN_ANIMATION_AIR_SPECIAL, _basic_attack_sprite_frame(), 4)
+		&"ren_rise", &"vel_rise":
 			return _animation_frame(REN_ANIMATION_SPECIAL, _basic_attack_sprite_frame(), 0)
-		&"ren_dive":
+		&"ren_dive", &"vel_dive":
 			return _animation_frame(REN_ANIMATION_SPECIAL, _basic_attack_sprite_frame(), 1)
-		&"ren_super":
-			var super_frame := _ren_super_sprite_frame()
+		&"ren_super", &"vel_super":
+			var super_frame := _super_sprite_frame()
 			return _animation_frame(
 				REN_ANIMATION_SPECIAL,
 				super_frame % 5,
@@ -1505,20 +1519,6 @@ func _visual_pose() -> Dictionary:
 				visual_offset = Vector2(facing * vertical_speed * 2.0, -apex_tuck * 5.0)
 				var jump_rotation := facing * (-0.075 - vertical_speed * 0.055)
 				visual_rotation = jump_rotation
-				if character_id == &"vel":
-					# Vel currently uses a tall single-image sprite. Tuck it sideways near
-					# the apex so the higher jump remains inside the HUD-safe area.
-					var tuck_blend := _smooth_motion(clampf(
-						apex_tuck / VEL_JUMP_TUCK_BLEND_END,
-						0.0,
-						1.0
-					))
-					visual_rotation = lerp_angle(
-						jump_rotation,
-						float(facing) * PI * 0.5,
-						tuck_blend
-					)
-					visual_offset.y -= VEL_JUMP_TUCK_OFFSET_Y * tuck_blend
 				visual_scale *= Vector2(0.96 + apex_tuck * 0.08, 1.07 - apex_tuck * 0.13)
 			&"vel_shadow":
 				if state_frame <= 7:
