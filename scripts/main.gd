@@ -41,6 +41,7 @@ const HITSTOP_TIME_SCALE := 0.7
 const ROUND_START_DISTANCE := 492.0
 const ROUND_SECONDS := 99
 const ROUNDS_TO_WIN := 2
+const COMBO_DISPLAY_HOLD_FRAMES := 120
 const MODE_SOLO: StringName = &"solo"
 const MODE_VERSUS: StringName = &"versus"
 const MODE_TRAINING: StringName = &"training"
@@ -204,6 +205,8 @@ var projectiles: Array[Dictionary] = []
 var announcement := "ROUND 1"
 var announcement_sub := ""
 var combat_callout_frames := 0
+var combo_display_hits := [0, 0]
+var combo_display_frames := [0, 0]
 var game_mode: StringName = MODE_SOLO
 var mode_selection := 0
 var stage_selection := STAGE_ROYAL_COLOSSEUM
@@ -1711,6 +1714,7 @@ func _start_round() -> void:
 	hit_sparks.clear()
 	projectiles.clear()
 	combat_callout_frames = 0
+	_reset_combo_display()
 	cpu_controller.reset()
 	fighters[0].facing = 1
 	fighters[1].facing = -1
@@ -2329,8 +2333,25 @@ func _update_combo_labels() -> void:
 			var defender_index := 1 - attacker_index
 			var combo_hits := fighters[defender_index].combo_received
 			if combo_hits > 1:
-				combo_text = "%d HIT COMBO" % combo_hits
+				combo_display_hits[attacker_index] = combo_hits
+				combo_display_frames[attacker_index] = COMBO_DISPLAY_HOLD_FRAMES
+			elif combo_display_frames[attacker_index] > 0:
+				combo_display_frames[attacker_index] -= 1
+			else:
+				combo_display_hits[attacker_index] = 0
+			if combo_display_hits[attacker_index] > 1:
+				combo_text = "%d HIT COMBO" % combo_display_hits[attacker_index]
+		else:
+			combo_display_hits[attacker_index] = 0
+			combo_display_frames[attacker_index] = 0
 		_set_label_text_if_changed(combo_labels[attacker_index], combo_text)
+
+
+func _reset_combo_display() -> void:
+	combo_display_hits = [0, 0]
+	combo_display_frames = [0, 0]
+	for combo_label in combo_labels:
+		_set_label_text_if_changed(combo_label, "")
 
 
 func _set_label_text_if_changed(label: Label, next_text: String) -> void:
