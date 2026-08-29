@@ -88,6 +88,7 @@ const BACK_STEP_DURATION_FRAMES := 15
 const FORWARD_STEP_PEAK_SPEED := 880.0
 const BACK_STEP_PEAK_SPEED := 720.0
 const KNOCKOUT_PRONE_FRAME := 35
+const DEFAULT_KNOCKDOWN_RECOVERY_FRAMES := 48
 const ACTION_MOTION_SAMPLE_FRAMES := 2
 const AMBIENT_MOTION_SAMPLE_FRAMES := 3
 const KEYBOARD_LIGHT_KEY := KEY_J
@@ -99,6 +100,7 @@ const REN_EFFECT_LIGHT := Color("7defff")
 const REN_EFFECT_BLUE := Color("209cff")
 const REN_EFFECT_DEEP := Color("3151e8")
 const REN_PULSE_EFFECT_Y := -214.0
+const REN_PULSE_PROJECTILE_SPEED := 680.0
 const REN_PALM_EFFECT_OFFSET := Vector2(80.0, -240.0)
 
 const ATTACKS := {
@@ -181,11 +183,11 @@ const ATTACKS := {
 	},
 	&"ren_rise": {
 		"startup": 5, "active": 8, "recovery": 25,
-		"damage": 118, "chip": 0, "hitstun": 28, "blockstun": 16,
+		"damage": 118, "chip": 0, "hitstun": 20, "blockstun": 16,
 		"range": 78.0, "height": 128.0, "push": 30.0,
 		"hitstop": 13, "label": "SKY BREAK", "effect": &"rise",
 		"bottom_offset": 0.0, "airborne": true, "knockdown": true,
-		"launch_y": -430.0, "invulnerable_until": 8,
+		"launch_y": -430.0, "knockdown_frames": 38, "invulnerable_until": 8,
 		"meter_hit": 14, "meter_block": 7
 	},
 	&"ren_dive": {
@@ -313,6 +315,7 @@ var throw_backwards := false
 var air_attack_used := false
 var motion_tick := 0
 var landing_frames := 0
+var knockdown_recovery_frames := DEFAULT_KNOCKDOWN_RECOVERY_FRAMES
 var sprite_transition_from := Vector3i(-1, -1, -1)
 var sprite_transition_target: StringName = &""
 var sprite_transition_frames := 0
@@ -412,6 +415,7 @@ func reset_for_round(spawn_position: Vector2) -> void:
 	air_attack_used = false
 	motion_tick = 0
 	landing_frames = 0
+	knockdown_recovery_frames = DEFAULT_KNOCKDOWN_RECOVERY_FRAMES
 	_clear_sprite_transition()
 	previous_buttons = {
 		"light": false,
@@ -864,7 +868,7 @@ func _step_knockdown() -> void:
 	if knocked_out:
 		state_frame = mini(state_frame, KNOCKOUT_PRONE_FRAME)
 		return
-	if state_frame >= 48:
+	if state_frame >= knockdown_recovery_frames:
 		_set_state_with_visual_transition(&"idle")
 		combo_received = 0
 
@@ -1062,6 +1066,10 @@ func receive_attack(data: Dictionary, attacker_x: float, forced_push_direction :
 		state = &"knockdown" if causes_knockdown else &"hitstun"
 		last_hit_result = "HIT:%d" % int(data.hitstun)
 		if state == &"knockdown":
+			knockdown_recovery_frames = int(data.get(
+				"knockdown_frames",
+				DEFAULT_KNOCKDOWN_RECOVERY_FRAMES
+			))
 			velocity.y = float(data.get("launch_y", -330.0))
 
 	_queue_visual_redraw_if_needed()
@@ -1094,7 +1102,7 @@ func take_projectile_request() -> Dictionary:
 	return {
 		"owner_id": player_id,
 		"position": position + Vector2(facing * 62.0, REN_PULSE_EFFECT_Y + grounding_offset_y),
-		"velocity": Vector2(facing * 510.0, 0.0),
+		"velocity": Vector2(facing * REN_PULSE_PROJECTILE_SPEED, 0.0),
 		"frames": 105,
 		"max_frames": 105,
 		"radius": 18.0,
