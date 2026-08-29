@@ -90,6 +90,13 @@ const FORWARD_STEP_DURATION_FRAMES := 13
 const BACK_STEP_DURATION_FRAMES := 15
 const FORWARD_STEP_PEAK_SPEED := 880.0
 const BACK_STEP_PEAK_SPEED := 720.0
+const VEL_SHADOW_RETREAT_END_FRAME := 7
+const VEL_SHADOW_PAUSE_END_FRAME := 10
+const VEL_SHADOW_ADVANCE_END_FRAME := 27
+const VEL_SHADOW_END_FRAME := 34
+const VEL_SHADOW_RETREAT_SPEED := 330.0
+const VEL_SHADOW_ADVANCE_SPEED := 920.0
+const VEL_SHADOW_DECELERATION := 120.0
 const KNOCKOUT_PRONE_FRAME := 35
 const DEFAULT_KNOCKDOWN_RECOVERY_FRAMES := 48
 const ACTION_MOTION_SAMPLE_FRAMES := 2
@@ -246,7 +253,8 @@ const ATTACKS := {
 		"damage": 112, "chip": 5, "hitstun": 27, "blockstun": 16,
 		"range": 98.0, "height": 88.0, "push": 38.0,
 		"hitstop": 12, "label": "PREDATOR POUNCE", "effect": &"pounce",
-		"bottom_offset": -10.0, "airborne": true,
+		"bottom_offset": -10.0, "airborne": true, "knockdown": true,
+		"launch_y": -300.0, "knockdown_frames": 44,
 		"block_type": &"overhead", "meter_hit": 14, "meter_block": 7
 	},
 	&"vel_rise": {
@@ -259,12 +267,13 @@ const ATTACKS := {
 	},
 	&"vel_dive": {
 		"startup": 8, "active": 10, "recovery": 18,
-		"damage": 114, "chip": 5, "hitstun": 27, "blockstun": 16,
+		"damage": 114, "chip": 5, "hitstun": 20, "blockstun": 16,
 		"range": 92.0, "height": 88.0, "push": 42.0,
 		"hitstop": 13, "label": "REAPER DIVE", "effect": &"claw_dive",
 		"bottom_offset": -14.0, "airborne": true,
 		"block_type": &"overhead", "knockdown": true,
-		"launch_y": -260.0, "meter_hit": 14, "meter_block": 7
+		"launch_y": -260.0, "knockdown_frames": 36,
+		"meter_hit": 14, "meter_block": 7
 	},
 	&"vel_super": {
 		"startup": 7, "active": 5, "recovery": 34,
@@ -850,16 +859,16 @@ func _can_correct_normal_to_super() -> bool:
 
 func _step_vel_shadow() -> void:
 	state_frame += 1
-	if state_frame <= 7:
-		velocity.x = -facing * 330.0
-	elif state_frame <= 10:
-		velocity.x = move_toward(velocity.x, 0.0, 120.0)
-	elif state_frame <= 21:
-		velocity.x = facing * 455.0
+	if state_frame <= VEL_SHADOW_RETREAT_END_FRAME:
+		velocity.x = -facing * VEL_SHADOW_RETREAT_SPEED
+	elif state_frame <= VEL_SHADOW_PAUSE_END_FRAME:
+		velocity.x = move_toward(velocity.x, 0.0, VEL_SHADOW_DECELERATION)
+	elif state_frame <= VEL_SHADOW_ADVANCE_END_FRAME:
+		velocity.x = facing * VEL_SHADOW_ADVANCE_SPEED
 	else:
-		velocity.x = move_toward(velocity.x, 0.0, 120.0)
+		velocity.x = move_toward(velocity.x, 0.0, VEL_SHADOW_DECELERATION)
 
-	if state_frame >= 10:
+	if state_frame >= VEL_SHADOW_PAUSE_END_FRAME:
 		if _try_start_super():
 			return
 		if _is_button_buffered("heavy"):
@@ -871,7 +880,7 @@ func _step_vel_shadow() -> void:
 			change_state(&"light")
 			return
 
-	if state_frame >= 26:
+	if state_frame >= VEL_SHADOW_END_FRAME:
 		_set_state_with_visual_transition(&"idle")
 
 
@@ -1503,15 +1512,24 @@ func _animated_sprite_frame() -> Vector3i:
 				step_frame = 4 - step_frame
 			return _animation_frame(REN_ANIMATION_BASIC, step_frame, 1)
 		&"vel_shadow":
-			if state_frame <= 10:
+			if state_frame <= VEL_SHADOW_PAUSE_END_FRAME:
 				return _animation_frame(
 					REN_ANIMATION_BASIC,
 					clampi(floori(float(state_frame) / 2.0), 0, 4),
 					1
 				)
+			var advance_frames := VEL_SHADOW_ADVANCE_END_FRAME - VEL_SHADOW_PAUSE_END_FRAME
 			return _animation_frame(
 				REN_ANIMATION_AIR_SPECIAL,
-				clampi(floori(float(state_frame - 10) * 5.0 / 16.0), 0, 4),
+				clampi(
+					floori(
+						float(state_frame - VEL_SHADOW_PAUSE_END_FRAME)
+						* 5.0
+						/ float(advance_frames)
+					),
+					0,
+					4
+				),
 				4
 			)
 		&"jump":
@@ -1837,17 +1855,22 @@ func _visual_pose() -> Dictionary:
 				visual_rotation = jump_rotation
 				visual_scale *= Vector2(0.96 + apex_tuck * 0.08, 1.07 - apex_tuck * 0.13)
 			&"vel_shadow":
-				if state_frame <= 7:
-					var retreat_t := _smooth_motion(float(state_frame) / 7.0)
+				if state_frame <= VEL_SHADOW_RETREAT_END_FRAME:
+					var retreat_t := _smooth_motion(
+						float(state_frame) / float(VEL_SHADOW_RETREAT_END_FRAME)
+					)
 					visual_offset = Vector2(-facing * (4.0 + retreat_t * 10.0), -retreat_t * 3.0)
 					visual_rotation = facing * (0.05 + retreat_t * 0.13)
 					visual_scale *= Vector2(1.0 + retreat_t * 0.08, 1.0 - retreat_t * 0.07)
-				elif state_frame <= 10:
+				elif state_frame <= VEL_SHADOW_PAUSE_END_FRAME:
 					visual_offset = Vector2(-facing * 5.0, 5.0)
 					visual_rotation = facing * 0.08
 					visual_scale *= Vector2(1.09, 0.87)
 				else:
-					var dash_t := _smooth_motion(float(state_frame - 10) / 16.0)
+					var dash_frames := VEL_SHADOW_ADVANCE_END_FRAME - VEL_SHADOW_PAUSE_END_FRAME
+					var dash_t := _smooth_motion(
+						float(state_frame - VEL_SHADOW_PAUSE_END_FRAME) / float(dash_frames)
+					)
 					visual_offset = Vector2(facing * (10.0 + dash_t * 11.0), -5.0)
 					visual_rotation = -facing * (0.14 + dash_t * 0.06)
 					visual_scale *= Vector2(1.13, 0.9)
@@ -2280,7 +2303,7 @@ func _draw_motion_echoes(
 	var trail_direction := Vector2(-float(facing), 0.0)
 	if velocity.length() > 90.0:
 		trail_direction = -velocity.normalized()
-	if state == &"vel_shadow" and state_frame <= 10:
+	if state == &"vel_shadow" and state_frame <= VEL_SHADOW_PAUSE_END_FRAME:
 		trail_direction = Vector2(float(facing), 0.0)
 
 	var echo_color := body_color.lightened(0.32)
