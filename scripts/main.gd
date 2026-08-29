@@ -1867,9 +1867,9 @@ func _capture_training_input() -> void:
 	if bool(pressed.get("heavy", false)):
 		buttons.append("強")
 	if bool(pressed.get("special", false)):
-		buttons.append("必殺")
+		buttons.append("SP")
 	if bool(pressed.get("throw", false)):
-		buttons.append("投げ")
+		buttons.append("TH")
 
 	var direction := _training_direction_text(axis)
 	var direction_changed := axis != training_previous_axis
