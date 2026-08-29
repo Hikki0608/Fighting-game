@@ -1863,9 +1863,9 @@ func _capture_training_input() -> void:
 	var pressed: Dictionary = fighters[0].intent.pressed
 	var buttons: Array[String] = []
 	if bool(pressed.get("light", false)):
-		buttons.append("L")
+		buttons.append("弱")
 	if bool(pressed.get("heavy", false)):
-		buttons.append("H")
+		buttons.append("強")
 	if bool(pressed.get("special", false)):
 		buttons.append("SP")
 	if bool(pressed.get("throw", false)):
