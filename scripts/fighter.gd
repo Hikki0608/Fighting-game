@@ -81,6 +81,12 @@ const REN_REACTION_BOTTOM_GAPS := [
 const MAX_METER := 100
 const INPUT_BUFFER_FRAMES := 7
 const SUPER_CHORD_BUFFER_FRAMES := 5
+const DOUBLE_TAP_WINDOW_FRAMES := 12
+const STEP_INPUT_BUFFER_FRAMES := 4
+const FORWARD_STEP_DURATION_FRAMES := 13
+const BACK_STEP_DURATION_FRAMES := 15
+const FORWARD_STEP_PEAK_SPEED := 880.0
+const BACK_STEP_PEAK_SPEED := 720.0
 const KNOCKOUT_PRONE_FRAME := 35
 const AMBIENT_MOTION_SAMPLE_FRAMES := 2
 const KEYBOARD_LIGHT_KEY := KEY_J
@@ -293,6 +299,10 @@ var super_chord_buffer := {
 	"light": 0,
 	"heavy": 0
 }
+var last_horizontal_tap_direction := 0
+var horizontal_tap_window_frames := 0
+var step_buffer_direction := 0
+var step_buffer_frames := 0
 var input_history: Array[Vector2] = []
 var debug_boxes := false
 var combo_received := 0
@@ -417,6 +427,7 @@ func reset_for_round(spawn_position: Vector2) -> void:
 		button_buffer[button_name] = 0
 	for button_name in super_chord_buffer:
 		super_chord_buffer[button_name] = 0
+	_clear_step_input()
 	input_history.clear()
 	_invalidate_visual_cache()
 	_queue_visual_redraw_if_needed()
@@ -471,6 +482,7 @@ func clear_action_buffer() -> void:
 		button_buffer[button_name] = 0
 	for button_name in super_chord_buffer:
 		super_chord_buffer[button_name] = 0
+	_clear_step_input()
 
 
 func _commit_input(raw_axis: Vector2, buttons: Dictionary) -> void:
@@ -478,6 +490,7 @@ func _commit_input(raw_axis: Vector2, buttons: Dictionary) -> void:
 
 	axis.x = 0.0 if absf(axis.x) < 0.28 else signf(axis.x)
 	axis.y = 0.0 if absf(axis.y) < 0.28 else signf(axis.y)
+	_capture_horizontal_tap(axis, float(intent.axis.x))
 
 	var pressed: Dictionary = intent.pressed
 	var committed_buttons: Dictionary = intent.buttons
@@ -495,6 +508,37 @@ func _commit_input(raw_axis: Vector2, buttons: Dictionary) -> void:
 	input_history.push_front(Vector2(axis.x * facing, axis.y))
 	if input_history.size() > 18:
 		input_history.pop_back()
+
+
+func _capture_horizontal_tap(axis: Vector2, previous_axis_x: float) -> void:
+	# A tap begins only when a horizontal direction is pressed from neutral.
+	# Requiring neutral between taps prevents a held stick from repeatedly
+	# starting steps and keeps diagonals available for jumps and crouch inputs.
+	if absf(axis.y) > 0.5 or absf(axis.x) < 0.5 or absf(previous_axis_x) > 0.5:
+		return
+	var tap_direction := int(signf(axis.x))
+	if tap_direction == last_horizontal_tap_direction and horizontal_tap_window_frames > 0:
+		step_buffer_direction = tap_direction
+		step_buffer_frames = STEP_INPUT_BUFFER_FRAMES
+		last_horizontal_tap_direction = 0
+		horizontal_tap_window_frames = 0
+		return
+	last_horizontal_tap_direction = tap_direction
+	horizontal_tap_window_frames = DOUBLE_TAP_WINDOW_FRAMES
+
+
+func _clear_step_input() -> void:
+	last_horizontal_tap_direction = 0
+	horizontal_tap_window_frames = 0
+	step_buffer_direction = 0
+	step_buffer_frames = 0
+
+
+func _consume_step_input() -> int:
+	var requested_direction := step_buffer_direction
+	step_buffer_direction = 0
+	step_buffer_frames = 0
+	return requested_direction
 
 
 func _reset_sampled_buttons() -> void:
@@ -524,6 +568,12 @@ func _tick_input_buffer() -> void:
 		button_buffer[button_name] = maxi(0, int(button_buffer[button_name]) - 1)
 	for button_name in super_chord_buffer:
 		super_chord_buffer[button_name] = maxi(0, int(super_chord_buffer[button_name]) - 1)
+	horizontal_tap_window_frames = maxi(0, horizontal_tap_window_frames - 1)
+	if horizontal_tap_window_frames == 0:
+		last_horizontal_tap_direction = 0
+	step_buffer_frames = maxi(0, step_buffer_frames - 1)
+	if step_buffer_frames == 0:
+		step_buffer_direction = 0
 
 
 func simulate(opponent: Fighter, accepting_input: bool) -> void:
@@ -540,6 +590,8 @@ func simulate(opponent: Fighter, accepting_input: bool) -> void:
 		_step_knockdown()
 	elif state == &"vel_shadow":
 		_step_vel_shadow()
+	elif state == &"forward_step" or state == &"back_step":
+		_step_ground_step()
 	elif is_attacking():
 		_step_attack()
 	elif accepting_input:
@@ -598,6 +650,9 @@ func _step_neutral(opponent: Fighter) -> void:
 		_consume_button("light")
 		change_state(&"crouch_light" if intent.axis.y > 0.5 else &"light")
 		return
+	if step_buffer_frames > 0 and step_buffer_direction != 0:
+		_start_ground_step(_consume_step_input())
+		return
 	if intent.axis.y < -0.5:
 		velocity.y = JUMP_SPEED
 		velocity.x = intent.axis.x * AIR_MOVE_SPEED
@@ -621,6 +676,31 @@ func _walk_speed_for_axis(axis_x: float) -> float:
 	if axis_x * float(facing) > 0.0:
 		return FORWARD_WALK_SPEED
 	return WALK_SPEED
+
+
+func _start_ground_step(input_direction: int) -> void:
+	var is_forward := input_direction * facing > 0
+	_set_state_with_visual_transition(&"forward_step" if is_forward else &"back_step")
+	var peak_speed := FORWARD_STEP_PEAK_SPEED if is_forward else BACK_STEP_PEAK_SPEED
+	velocity.x = float(input_direction) * peak_speed
+
+
+func _step_ground_step() -> void:
+	state_frame += 1
+	var is_forward := state == &"forward_step"
+	var duration := FORWARD_STEP_DURATION_FRAMES if is_forward else BACK_STEP_DURATION_FRAMES
+	if state_frame >= duration:
+		velocity.x = 0.0
+		_set_state_with_visual_transition(&"idle")
+		return
+
+	# Start with a responsive burst, then ease to a stop before the recovery
+	# frame so the movement feels deliberate instead of ending abruptly.
+	var progress := clampf(float(state_frame) / float(duration - 1), 0.0, 1.0)
+	var speed_curve := cos(progress * PI * 0.5)
+	var movement_direction := facing if is_forward else -facing
+	var peak_speed := FORWARD_STEP_PEAK_SPEED if is_forward else BACK_STEP_PEAK_SPEED
+	velocity.x = float(movement_direction) * peak_speed * speed_curve
 
 
 func _try_start_super() -> bool:
@@ -1069,6 +1149,8 @@ func _queue_visual_redraw_if_needed() -> void:
 	var uses_gameplay_frames := (
 		is_attacking()
 		or state == &"vel_shadow"
+		or state == &"forward_step"
+		or state == &"back_step"
 		or state == &"hitstun"
 		or state == &"blockstun"
 		or state == &"knockdown"
@@ -1116,7 +1198,14 @@ func _can_turn() -> bool:
 
 
 func _is_blocking(attacker_x: float, attack_data: Dictionary) -> bool:
-	if not is_on_ground() or is_attacking() or state == &"hitstun" or state == &"knockdown":
+	if (
+		not is_on_ground()
+		or is_attacking()
+		or state == &"forward_step"
+		or state == &"back_step"
+		or state == &"hitstun"
+		or state == &"knockdown"
+	):
 		return false
 	var holding_back: bool = true
 	var crouch_blocking: bool = block_stance_crouching
@@ -1270,6 +1359,20 @@ func _animated_sprite_frame() -> Vector3i:
 			if velocity.x * float(facing) < 0.0:
 				walk_frame = 4 - walk_frame
 			return _animation_frame(REN_ANIMATION_BASIC, walk_frame, 1)
+		&"forward_step", &"back_step":
+			var duration := (
+				FORWARD_STEP_DURATION_FRAMES
+				if state == &"forward_step"
+				else BACK_STEP_DURATION_FRAMES
+			)
+			var step_frame := clampi(
+				floori(float(state_frame) * 5.0 / float(duration)),
+				0,
+				4
+			)
+			if state == &"back_step":
+				step_frame = 4 - step_frame
+			return _animation_frame(REN_ANIMATION_BASIC, step_frame, 1)
 		&"vel_shadow":
 			if state_frame <= 10:
 				return _animation_frame(
@@ -1577,6 +1680,21 @@ func _visual_pose() -> Dictionary:
 				visual_offset = Vector2(facing * step_cycle * 1.8, -absf(step_cycle) * 4.5)
 				visual_rotation = facing * (-0.035 * forward_motion + step_cycle * 0.018)
 				visual_scale *= Vector2(1.0 + absf(step_cycle) * 0.018, 1.0 - absf(step_cycle) * 0.025)
+			&"forward_step", &"back_step":
+				var duration := (
+					FORWARD_STEP_DURATION_FRAMES
+					if state == &"forward_step"
+					else BACK_STEP_DURATION_FRAMES
+				)
+				var step_progress := clampf(float(state_frame) / float(duration), 0.0, 1.0)
+				var step_surge := sin(step_progress * PI)
+				var step_direction := 1.0 if state == &"forward_step" else -1.0
+				visual_offset = Vector2(
+					facing * step_direction * (3.0 + step_surge * 10.0),
+					-step_surge * 5.0
+				)
+				visual_rotation = -facing * step_direction * (0.055 + step_surge * 0.075)
+				visual_scale *= Vector2(1.0 + step_surge * 0.055, 1.0 - step_surge * 0.045)
 			&"crouch":
 				visual_offset = Vector2(0.0, 3.0 + breath * 0.7)
 				visual_rotation = facing * breath * 0.006
@@ -1963,6 +2081,23 @@ func _draw_motion_accents() -> void:
 			var foot_x := -18.0 if step_cycle > 0.0 else 18.0
 			var walk_dust := Color(Color("c8b98f"), footfall * 0.2)
 			draw_circle(Vector2(foot_x, -2.0), 3.0 + footfall * 3.0, walk_dust)
+	elif state == &"forward_step" or state == &"back_step":
+		var duration := (
+			FORWARD_STEP_DURATION_FRAMES
+			if state == &"forward_step"
+			else BACK_STEP_DURATION_FRAMES
+		)
+		var step_progress := clampf(float(state_frame) / float(duration), 0.0, 1.0)
+		var dust_strength := sin(step_progress * PI)
+		var movement_direction := 1.0 if state == &"forward_step" else -1.0
+		var dust_origin_x := -facing * movement_direction * 25.0
+		for dust_index in 3:
+			var dust_offset := float(dust_index) * 13.0
+			draw_circle(
+				Vector2(dust_origin_x - facing * movement_direction * dust_offset, -3.0),
+				3.0 + float(2 - dust_index) * 1.8,
+				Color(Color("d8c79d"), dust_strength * (0.2 - float(dust_index) * 0.045))
+			)
 
 	if state == &"hitstun" and state_frame <= 8:
 		var impact_alpha := 0.32 * (1.0 - float(state_frame) / 9.0)
@@ -1990,6 +2125,8 @@ func _draw_motion_echoes(
 	match state:
 		&"heavy", &"forward_heavy", &"jump_heavy":
 			echo_alpha = 0.075
+		&"forward_step", &"back_step":
+			echo_alpha = 0.105
 		&"ren_palm", &"ren_rise", &"ren_dive":
 			echo_alpha = 0.13
 		&"vel_rake", &"vel_pounce", &"vel_rise", &"vel_dive":
