@@ -105,6 +105,30 @@ const REN_EFFECT_DEEP := Color("3151e8")
 const REN_PULSE_EFFECT_Y := -214.0
 const REN_PULSE_PROJECTILE_SPEED := 680.0
 const REN_PALM_EFFECT_OFFSET := Vector2(80.0, -240.0)
+const ATTACK_HITBOX_VERTICAL_MARGIN := 4.0
+const REN_PALM_HITBOX_HALF_SIZE := Vector2(42.0, 38.0)
+
+# front start, top, bottom, front margin. The first three values are ratios of
+# the currently visible sprite bounds, so attack boxes follow every animation
+# frame instead of extending from an invisible fixed rectangle.
+const ATTACK_HITBOX_PROFILES := {
+	&"light": [0.50, 0.16, 0.58, 8.0],
+	&"crouch_light": [0.44, 0.28, 0.82, 8.0],
+	&"heavy": [0.46, 0.12, 0.66, 10.0],
+	&"forward_heavy": [0.42, 0.0, 0.64, 10.0],
+	&"crouch_heavy": [0.38, 0.0, 0.74, 10.0],
+	&"throw": [0.48, 0.14, 0.74, 6.0],
+	&"jump_light": [0.48, 0.14, 0.64, 8.0],
+	&"jump_heavy": [0.44, 0.16, 0.66, 10.0],
+	&"ren_rise": [0.40, 0.0, 0.78, 10.0],
+	&"ren_dive": [0.38, 0.16, 0.86, 10.0],
+	&"ren_super": [0.34, 0.06, 0.82, 16.0],
+	&"vel_rake": [0.40, 0.10, 0.76, 12.0],
+	&"vel_pounce": [0.38, 0.16, 0.86, 10.0],
+	&"vel_rise": [0.38, 0.0, 0.80, 12.0],
+	&"vel_dive": [0.36, 0.14, 0.88, 12.0],
+	&"vel_super": [0.32, 0.04, 0.86, 16.0]
+}
 
 const ATTACKS := {
 	&"light": {
@@ -999,12 +1023,51 @@ func attack_rect() -> Rect2:
 	var data := current_attack()
 	if data.is_empty():
 		return Rect2()
+	if state == &"ren_palm":
+		var palm_center := ren_palm_effect_world_position()
+		return Rect2(
+			palm_center - REN_PALM_HITBOX_HALF_SIZE,
+			REN_PALM_HITBOX_HALF_SIZE * 2.0
+		)
+	if ATTACK_HITBOX_PROFILES.has(state):
+		return _profiled_attack_rect(ATTACK_HITBOX_PROFILES[state])
+
+	# Projectiles and future attacks without an authored profile retain the
+	# legacy data-driven rectangle as a safe fallback.
 	var attack_range: float = float(data.range) * VISUAL_COLLISION_SCALE
 	var attack_height: float = float(data.height) * VISUAL_COLLISION_SCALE
 	var x := position.x + BODY_WIDTH * 0.32 if facing > 0 else position.x - BODY_WIDTH * 0.32 - attack_range
 	var bottom_offset: float = float(data.get("bottom_offset", 22.0)) * VISUAL_COLLISION_SCALE
 	var y := position.y - attack_height - bottom_offset + _current_sprite_grounding_offset_y()
 	return Rect2(x, y, attack_range, attack_height)
+
+
+func _profiled_attack_rect(profile: Array) -> Rect2:
+	var visible_bounds := hurt_rect()
+	if not visible_bounds.has_area():
+		return Rect2()
+	var front_start_ratio := clampf(float(profile[0]), 0.0, 1.0)
+	var top_ratio := clampf(float(profile[1]), 0.0, 1.0)
+	var bottom_ratio := clampf(float(profile[2]), top_ratio, 1.0)
+	var front_margin := maxf(0.0, float(profile[3]))
+	var attack_top := visible_bounds.position.y + visible_bounds.size.y * top_ratio
+	var attack_bottom := visible_bounds.position.y + visible_bounds.size.y * bottom_ratio
+	attack_top -= ATTACK_HITBOX_VERTICAL_MARGIN
+	attack_bottom += ATTACK_HITBOX_VERTICAL_MARGIN
+
+	if facing > 0:
+		var attack_left := visible_bounds.position.x + visible_bounds.size.x * front_start_ratio
+		var attack_right := visible_bounds.end.x + front_margin
+		return Rect2(
+			Vector2(attack_left, attack_top),
+			Vector2(attack_right - attack_left, attack_bottom - attack_top)
+		)
+	var attack_right := visible_bounds.end.x - visible_bounds.size.x * front_start_ratio
+	var attack_left := visible_bounds.position.x - front_margin
+	return Rect2(
+		Vector2(attack_left, attack_top),
+		Vector2(attack_right - attack_left, attack_bottom - attack_top)
+	)
 
 
 func hurt_rect() -> Rect2:
