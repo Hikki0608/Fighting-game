@@ -5,6 +5,10 @@ const REN_EFFECT_CORE := Color("efffff")
 const REN_EFFECT_LIGHT := Color("7defff")
 const REN_EFFECT_BLUE := Color("209cff")
 const REN_EFFECT_DEEP := Color("3151e8")
+const IMPACT_SPLASH_COLOR := Color("ddf7fa")
+const IMPACT_SPLASH_HIGHLIGHT := Color("ffffff")
+const SPLASH_GRAVITY := 1120.0
+const SPLASH_FRAME_RATE := 60.0
 
 var projectiles: Array[Dictionary] = []
 var hit_sparks: Array[Dictionary] = []
@@ -55,11 +59,162 @@ func _draw() -> void:
 	for spark in hit_sparks:
 		if bool(spark.get("ren_special", false)):
 			_draw_ren_special_hit_spark(spark)
+		else:
+			_draw_default_hit_spark(spark)
+		_draw_impact_splash(spark)
+
+
+func _spark_age_frames(spark: Dictionary) -> int:
+	var max_frames := maxi(1, int(spark.get("max_frames", 12)))
+	return clampi(max_frames - int(spark.get("frames", 0)), 0, max_frames)
+
+
+func _effect_frames_remaining(spark: Dictionary) -> int:
+	var effect_frames := maxi(1, int(spark.get("effect_frames", spark.get("max_frames", 12))))
+	return maxi(0, effect_frames - _spark_age_frames(spark))
+
+
+func _draw_default_hit_spark(spark: Dictionary) -> void:
+	var effect_frames_remaining := _effect_frames_remaining(spark)
+	if effect_frames_remaining <= 0:
+		return
+	var spark_color := Color("8defff") if bool(spark.get("blocked", false)) else Color(spark.get("color", Color("fff19a")))
+	var radius := float(effect_frames_remaining) * 2.5
+	var spark_position: Vector2 = spark.get("position", Vector2.ZERO)
+	draw_circle(spark_position, radius * 0.5, Color(spark_color, 0.16))
+	draw_circle(spark_position, radius * 0.24, spark_color)
+
+
+func _splash_random(seed: int, particle_index: int, channel: int) -> float:
+	var hash_input := float(absi(seed % 1000003) + particle_index * 131 + channel * 197)
+	return fposmod(sin(hash_input * 12.9898) * 43758.5453, 1.0)
+
+
+func _splash_particle_count(spark: Dictionary) -> int:
+	var blocked := bool(spark.get("blocked", false))
+	if blocked:
+		return 5 if bool(spark.get("super", false)) else 4
+	var damage := maxi(0, int(spark.get("impact_damage", 60)))
+	var damage_bonus := clampi(roundi(sqrt(float(damage)) * 0.55), 0, 6)
+	return 8 + damage_bonus + (3 if bool(spark.get("super", false)) else 0)
+
+
+func _splash_power(spark: Dictionary) -> float:
+	var damage := maxi(1, int(spark.get("impact_damage", 60)))
+	var power := clampf(0.68 + sqrt(float(damage) / 100.0) * 0.48, 0.72, 1.5)
+	if bool(spark.get("super", false)):
+		power = minf(1.65, power + 0.14)
+	if bool(spark.get("blocked", false)):
+		power *= 0.52
+	return power
+
+
+func _splash_particle_state(spark: Dictionary, particle_index: int) -> Dictionary:
+	var splash_frames := maxi(1, int(spark.get("splash_frames", spark.get("max_frames", 24))))
+	var age_frames := float(_spark_age_frames(spark))
+	var seed := int(spark.get("splash_seed", 1))
+	var lifetime_ratio := lerpf(0.64, 1.0, _splash_random(seed, particle_index, 0))
+	var lifetime_frames := float(splash_frames) * lifetime_ratio
+	if age_frames > lifetime_frames:
+		return {}
+
+	var progress := clampf(age_frames / maxf(1.0, lifetime_frames), 0.0, 1.0)
+	var elapsed_seconds := age_frames / SPLASH_FRAME_RATE
+	var power := _splash_power(spark)
+	var facing_direction := float(int(spark.get("facing", 1)))
+	if is_zero_approx(facing_direction):
+		facing_direction = 1.0
+
+	var horizontal_speed := lerpf(165.0, 470.0, _splash_random(seed, particle_index, 1)) * power
+	if _splash_random(seed, particle_index, 2) < 0.14:
+		horizontal_speed *= -0.34
+	var vertical_speed := lerpf(-440.0, 70.0, _splash_random(seed, particle_index, 3)) * power
+	var source_state: StringName = spark.get("source_state", &"")
+	if source_state == &"ren_rise" or source_state == &"vel_rise":
+		vertical_speed -= 105.0 * power
+	elif source_state == &"ren_dive" or source_state == &"vel_dive":
+		vertical_speed += 65.0 * power
+
+	var initial_velocity := Vector2(facing_direction * horizontal_speed, vertical_speed)
+	var horizontal_drag := clampf(1.0 - elapsed_seconds * 0.5, 0.72, 1.0)
+	var origin: Vector2 = spark.get("position", Vector2.ZERO)
+	var initial_offset := Vector2(
+		facing_direction * lerpf(-3.0, 6.0, _splash_random(seed, particle_index, 4)),
+		lerpf(-7.0, 7.0, _splash_random(seed, particle_index, 5))
+	)
+	var particle_position := origin + initial_offset + Vector2(
+		initial_velocity.x * elapsed_seconds * horizontal_drag,
+		initial_velocity.y * elapsed_seconds + 0.5 * SPLASH_GRAVITY * elapsed_seconds * elapsed_seconds
+	)
+	var current_velocity := Vector2(
+		initial_velocity.x * clampf(1.0 - elapsed_seconds * 0.82, 0.46, 1.0),
+		initial_velocity.y + SPLASH_GRAVITY * elapsed_seconds
+	)
+	var radius := lerpf(1.25, 4.15, _splash_random(seed, particle_index, 6))
+	radius *= (0.82 + power * 0.18) * lerpf(1.0, 0.56, progress)
+	var alpha := pow(1.0 - progress, 1.35) * (0.62 if bool(spark.get("blocked", false)) else 0.92)
+	return {
+		"position": particle_position,
+		"velocity": current_velocity,
+		"radius": radius,
+		"alpha": alpha,
+		"progress": progress
+	}
+
+
+func _draw_impact_splash(spark: Dictionary) -> void:
+	var age_frames := _spark_age_frames(spark)
+	var splash_frames := maxi(1, int(spark.get("splash_frames", spark.get("max_frames", 24))))
+	if age_frames >= splash_frames:
+		return
+	var splash_color := Color(spark.get("splash_color", IMPACT_SPLASH_COLOR))
+	for particle_index in _splash_particle_count(spark):
+		var particle := _splash_particle_state(spark, particle_index)
+		if particle.is_empty():
 			continue
-		var spark_color := Color("8defff") if spark.blocked else Color(spark.get("color", Color("fff19a")))
-		var radius := float(spark.frames) * 2.5
-		draw_circle(spark.position, radius * 0.5, Color(spark_color, 0.16))
-		draw_circle(spark.position, radius * 0.24, spark_color)
+		var particle_position: Vector2 = particle.position
+		var particle_velocity: Vector2 = particle.velocity
+		var radius := float(particle.radius)
+		var alpha := float(particle.alpha)
+		var progress := float(particle.progress)
+		var velocity_direction := particle_velocity.normalized() if particle_velocity.length_squared() > 0.01 else Vector2.ZERO
+		var trail_length := clampf(particle_velocity.length() / 38.0, 2.5, 13.0) * (1.0 - progress * 0.72)
+		draw_line(
+			particle_position - velocity_direction * trail_length,
+			particle_position,
+			Color(splash_color, alpha * 0.58),
+			maxf(0.8, radius * 0.72),
+			true
+		)
+		draw_circle(particle_position, radius, Color(splash_color, alpha))
+		if radius > 2.0:
+			draw_circle(
+				particle_position - velocity_direction * radius * 0.28,
+				radius * 0.28,
+				Color(IMPACT_SPLASH_HIGHLIGHT, alpha * 0.72)
+			)
+
+	# A short-lived mist cloud fills the gap between the solid droplets and the
+	# contact spark, then disappears before the heavier drops begin to fall.
+	if age_frames > 7:
+		return
+	var mist_fade := 1.0 - float(age_frames) / 7.0
+	var mist_seed := int(spark.get("splash_seed", 1))
+	var mist_count := 4 if bool(spark.get("blocked", false)) else 8
+	var facing_direction := float(int(spark.get("facing", 1)))
+	var mist_origin: Vector2 = spark.get("position", Vector2.ZERO)
+	for mist_index in mist_count:
+		var mist_direction := Vector2(
+			facing_direction * lerpf(0.25, 1.0, _splash_random(mist_seed, mist_index, 8)),
+			lerpf(-0.85, 0.55, _splash_random(mist_seed, mist_index, 9))
+		).normalized()
+		var mist_distance := float(age_frames) * lerpf(2.2, 5.2, _splash_random(mist_seed, mist_index, 10))
+		var mist_radius := lerpf(2.0, 5.0, _splash_random(mist_seed, mist_index, 11)) * mist_fade
+		draw_circle(
+			mist_origin + mist_direction * mist_distance,
+			mist_radius,
+			Color(splash_color, 0.15 * mist_fade)
+		)
 
 
 func _draw_ren_pulse_projectile(projectile: Dictionary) -> void:
@@ -119,9 +274,13 @@ func _draw_ren_pulse_projectile(projectile: Dictionary) -> void:
 
 func _draw_ren_special_hit_spark(spark: Dictionary) -> void:
 	var spark_position: Vector2 = spark.position
-	var max_frames := maxi(1, int(spark.get("max_frames", 18)))
-	var remaining := clampf(float(spark.frames) / float(max_frames), 0.0, 1.0)
-	var progress := 1.0 - remaining
+	var effect_frames := maxi(1, int(spark.get("effect_frames", spark.get("max_frames", 18))))
+	var age_frames := _spark_age_frames(spark)
+	var effect_frames_remaining := maxi(0, effect_frames - age_frames)
+	if effect_frames_remaining <= 0:
+		return
+	var remaining := clampf(float(effect_frames_remaining) / float(effect_frames), 0.0, 1.0)
+	var progress := clampf(float(age_frames) / float(effect_frames), 0.0, 1.0)
 	var is_super := bool(spark.get("super", false))
 	var blocked := bool(spark.get("blocked", false))
 	var facing_direction := float(int(spark.get("facing", 1)))

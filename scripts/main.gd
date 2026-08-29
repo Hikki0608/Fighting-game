@@ -2081,11 +2081,22 @@ func _apply_attack_hit(
 		screen_shake = 8.5
 	else:
 		screen_shake = 8.0 if not result.blocked else 3.0
-	var spark_duration := 24 if is_super and is_ren_special else (18 if is_ren_special else (16 if is_super else 12))
+	var spark_effect_duration := 24 if is_super and is_ren_special else (18 if is_ren_special else (16 if is_super else 12))
+	var splash_duration := spark_effect_duration if result.blocked else 24
+	if not result.blocked and int(result.damage) >= 100:
+		splash_duration = 28
+	if not result.blocked and is_super:
+		splash_duration = 30
+	var spark_duration := maxi(spark_effect_duration, splash_duration)
 	hit_sparks.append({
 		"position": spark_position,
 		"frames": spark_duration,
 		"max_frames": spark_duration,
+		"effect_frames": spark_effect_duration,
+		"splash_frames": splash_duration,
+		"splash_seed": randi(),
+		"impact_damage": int(result.damage),
+		"splash_color": Color("ddf7fa"),
 		"blocked": result.blocked,
 		"color": attacker.body_color.lightened(0.35),
 		"source_state": source_state,
