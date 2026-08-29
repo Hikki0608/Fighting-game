@@ -72,6 +72,7 @@ jobs:
           "${GODOT_EDITOR}" --headless --path . --script tests/combo_ui_smoke.gd
           "${GODOT_EDITOR}" --headless --path . --script tests/cpu_reaction_smoke.gd
           "${GODOT_EDITOR}" --headless --path . --script tests/ren_move_tuning_smoke.gd
+          "${GODOT_EDITOR}" --headless --path . --script tests/vel_move_tuning_smoke.gd
           "${GODOT_EDITOR}" --headless --path . --script tests/combat_effects_smoke.gd
           "${GODOT_EDITOR}" --headless --path . --script tests/hurtbox_geometry_smoke.gd
           "${GODOT_EDITOR}" --headless --path . --script tests/attack_hitbox_geometry_smoke.gd

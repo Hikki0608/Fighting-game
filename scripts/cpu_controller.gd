@@ -123,8 +123,8 @@ func build_intent(cpu: Fighter, opponent: Fighter) -> Dictionary:
 func _vel_shadow_intent(cpu: Fighter, buttons: Dictionary) -> Dictionary:
 	last_tactic = &"vel_shadow"
 	if (
-		cpu.state_frame >= 10
-		and cpu.state_frame <= 20
+		cpu.state_frame >= Fighter.VEL_SHADOW_PAUSE_END_FRAME + 8
+		and cpu.state_frame <= Fighter.VEL_SHADOW_ADVANCE_END_FRAME + 2
 		and attack_cooldown <= 0
 		and rng.randf() < 0.28
 	):
