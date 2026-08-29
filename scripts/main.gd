@@ -234,6 +234,7 @@ var arena_ambience: ArenaAmbience
 var combat_effects: CombatEffects
 var announcement_label: Label
 var subtitle_label: Label
+var combo_labels: Array[Label] = []
 var training_label: Label
 var training_hud_label: Label
 var training_input_label: Label
@@ -438,6 +439,28 @@ func _create_ui() -> void:
 	subtitle_label.add_theme_font_size_override("font_size", 20)
 	subtitle_label.add_theme_color_override("font_color", Color("cae7f2"))
 	add_child(subtitle_label)
+
+	for player_index in 2:
+		var combo_label := Label.new()
+		combo_label.position = Vector2(42.0 if player_index == 0 else 770.0, 282.0)
+		combo_label.size = Vector2(340.0, 44.0)
+		combo_label.horizontal_alignment = (
+			HORIZONTAL_ALIGNMENT_LEFT
+			if player_index == 0
+			else HORIZONTAL_ALIGNMENT_RIGHT
+		)
+		combo_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		combo_label.add_theme_font_size_override("font_size", 22)
+		combo_label.add_theme_color_override(
+			"font_color",
+			fighters[player_index].body_color.lightened(0.35)
+		)
+		combo_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+		combo_label.add_theme_constant_override("shadow_offset_x", 2)
+		combo_label.add_theme_constant_override("shadow_offset_y", 2)
+		combo_label.visible = false
+		add_child(combo_label)
+		combo_labels.append(combo_label)
 
 	mode_label = Label.new()
 	mode_label.position = Vector2(426.0, 8.0)
@@ -1013,6 +1036,8 @@ func _show_stage_select(selected_mode: StringName) -> void:
 	character_select_layer.visible = false
 	announcement_label.visible = false
 	subtitle_label.visible = false
+	for combo_label in combo_labels:
+		combo_label.visible = false
 	mode_label.visible = false
 	training_label.visible = false
 	training_hud_label.visible = false
@@ -1245,6 +1270,8 @@ func _show_character_select(selected_mode: StringName) -> void:
 	character_select_layer.visible = true
 	announcement_label.visible = false
 	subtitle_label.visible = false
+	for combo_label in combo_labels:
+		combo_label.visible = false
 	mode_label.visible = false
 	training_label.visible = false
 	training_hud_label.visible = false
@@ -1546,6 +1573,8 @@ func _show_mode_menu() -> void:
 	training_input_label.visible = false
 	announcement_label.visible = false
 	subtitle_label.visible = false
+	for combo_label in combo_labels:
+		combo_label.visible = false
 	mode_label.visible = false
 	menu_layer.visible = true
 	stage_select_layer.visible = false
@@ -1643,6 +1672,8 @@ func _start_match(selected_mode: StringName) -> void:
 	character_select_layer.visible = false
 	announcement_label.visible = true
 	subtitle_label.visible = true
+	for combo_label in combo_labels:
+		combo_label.visible = true
 	mode_label.visible = true
 	for fighter in fighters:
 		fighter.visible = true
@@ -1655,6 +1686,10 @@ func _start_match(selected_mode: StringName) -> void:
 			character_data["color"],
 			character_data["texture"] as Texture2D,
 			character_data["animation_textures"]
+		)
+		combo_labels[index].add_theme_color_override(
+			"font_color",
+			fighters[index].body_color.lightened(0.35)
 		)
 		fighters[index].reset_match_resources()
 	wins = [0, 0]
@@ -2108,8 +2143,10 @@ func _apply_attack_hit(
 		announcement_sub = "BACK THROW"
 		combat_callout_frames = 60
 	elif result.combo > 1 and not result.blocked:
-		announcement_sub = "%d HIT COMBO" % result.combo
-		combat_callout_frames = 45
+		# Combo counts use player-side labels; keep the center clear for round,
+		# throw, and super callouts.
+		announcement_sub = ""
+		combat_callout_frames = 0
 	elif is_super:
 		announcement_sub = str(attack_data.get("label", "SUPER"))
 		combat_callout_frames = 60
@@ -2250,13 +2287,9 @@ func _apply_world_transform() -> void:
 
 
 func _update_ui() -> void:
-	if phase == &"fight" and announcement_sub.ends_with("HIT COMBO"):
-		# The combo text is transient and clears when the defender recovers.
-		if fighters[0].combo_received == 0 and fighters[1].combo_received == 0:
-			announcement_sub = ""
-
 	_set_label_text_if_changed(announcement_label, announcement)
 	_set_label_text_if_changed(subtitle_label, announcement_sub)
+	_update_combo_labels()
 	if game_mode == MODE_SOLO:
 		_set_label_text_if_changed(mode_label, "1 PLAYER  •  CPU STANDARD")
 	elif game_mode == MODE_TRAINING:
@@ -2287,6 +2320,17 @@ func _update_ui() -> void:
 			absf(fighters[1].position.x - fighters[0].position.x)
 		]
 		_set_label_text_if_changed(training_label, training_text)
+
+
+func _update_combo_labels() -> void:
+	for attacker_index in combo_labels.size():
+		var combo_text := ""
+		if phase == &"fight":
+			var defender_index := 1 - attacker_index
+			var combo_hits := fighters[defender_index].combo_received
+			if combo_hits > 1:
+				combo_text = "%d HIT COMBO" % combo_hits
+		_set_label_text_if_changed(combo_labels[attacker_index], combo_text)
 
 
 func _set_label_text_if_changed(label: Label, next_text: String) -> void:
