@@ -88,7 +88,8 @@ const BACK_STEP_DURATION_FRAMES := 15
 const FORWARD_STEP_PEAK_SPEED := 880.0
 const BACK_STEP_PEAK_SPEED := 720.0
 const KNOCKOUT_PRONE_FRAME := 35
-const AMBIENT_MOTION_SAMPLE_FRAMES := 2
+const ACTION_MOTION_SAMPLE_FRAMES := 2
+const AMBIENT_MOTION_SAMPLE_FRAMES := 3
 const KEYBOARD_LIGHT_KEY := KEY_J
 const KEYBOARD_HEAVY_KEY := KEY_K
 const KEYBOARD_SPECIAL_KEY := KEY_L
@@ -1156,7 +1157,8 @@ func _queue_visual_redraw_if_needed() -> void:
 		or state == &"knockdown"
 	)
 	var ambient_frame := floori(float(motion_tick) / float(AMBIENT_MOTION_SAMPLE_FRAMES))
-	var animated_frame := state_frame if uses_gameplay_frames else ambient_frame
+	var action_frame := floori(float(state_frame) / float(ACTION_MOTION_SAMPLE_FRAMES))
+	var animated_frame := action_frame if uses_gameplay_frames else ambient_frame
 	var height_step := roundi(position.y) if not is_on_ground() else roundi(GROUND_Y)
 	var attack_active := debug_boxes and is_attack_active()
 	var visual_changed := (
