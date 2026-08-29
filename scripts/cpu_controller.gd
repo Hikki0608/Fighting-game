@@ -7,6 +7,13 @@ const MID_RANGE := 235.0
 const FAR_RANGE := 360.0
 const CORNER_SPACE := 105.0
 const THREAT_PADDING := 78.0
+const THREAT_REACTION_MIN_FRAMES := 2
+const THREAT_REACTION_MAX_FRAMES := 7
+const NORMAL_DEFENSE_CHANCE := 0.64
+const PROJECTILE_DEFENSE_CHANCE := 0.68
+const THROW_DEFENSE_CHANCE := 0.56
+const SUPER_DEFENSE_CHANCE := 0.76
+const BLOCK_READ_ACCURACY := 0.86
 
 var rng := RandomNumberGenerator.new()
 var decision_frames := 0
@@ -18,6 +25,9 @@ var guard_axis := Vector2.ZERO
 var combo_source_state: StringName = &""
 var was_attacking := false
 var last_tactic: StringName = &"idle"
+var tracked_threat_state: StringName = &""
+var threat_reaction_frames := -1
+var threat_will_defend := false
 var decision_buttons := {
 	"light": false,
 	"heavy": false,
@@ -45,6 +55,7 @@ func reset() -> void:
 	combo_source_state = &""
 	was_attacking = false
 	last_tactic = &"idle"
+	_clear_tracked_threat()
 	_reset_buttons()
 
 
@@ -62,6 +73,7 @@ func build_intent(cpu: Fighter, opponent: Fighter) -> Dictionary:
 	var distance := absf(delta_x)
 	var toward := 1.0 if delta_x >= 0.0 else -1.0
 	var away := -toward
+	_refresh_threat_observation(opponent)
 
 	if cpu.state == &"vel_shadow":
 		return _vel_shadow_intent(cpu, buttons)
@@ -87,7 +99,7 @@ func build_intent(cpu: Fighter, opponent: Fighter) -> Dictionary:
 		last_tactic = &"guard_hold"
 		return _intent(guard_axis, buttons)
 
-	if _opponent_is_threatening(opponent, distance):
+	if _opponent_is_threatening(opponent, distance) and _should_defend_threat(opponent):
 		return _defensive_intent(cpu, opponent, distance, toward, away, buttons)
 
 	if (
@@ -217,8 +229,12 @@ func _defensive_intent(
 		return _start_guard(away, false, travel_frames, &"projectile_guard", buttons)
 
 	var block_type: StringName = attack.get("block_type", &"mid")
-	var crouching := block_type == &"low"
-	if block_type == &"mid":
+	var crouching := false
+	if block_type == &"low":
+		crouching = rng.randf() < BLOCK_READ_ACCURACY
+	elif block_type == &"overhead":
+		crouching = rng.randf() >= BLOCK_READ_ACCURACY
+	else:
 		crouching = rng.randf() < 0.44
 	return _start_guard(
 		away,
@@ -462,6 +478,49 @@ func _opponent_is_threatening(opponent: Fighter, distance: float) -> bool:
 		and opponent.state_frame <= startup + active + 2
 		and distance <= float(attack.get("range", 0.0)) + THREAT_PADDING
 	)
+
+
+func _refresh_threat_observation(opponent: Fighter) -> void:
+	if not opponent.is_attacking():
+		_clear_tracked_threat()
+		return
+	if tracked_threat_state == opponent.state:
+		return
+	tracked_threat_state = opponent.state
+	threat_reaction_frames = -1
+	threat_will_defend = false
+
+
+func _clear_tracked_threat() -> void:
+	tracked_threat_state = &""
+	threat_reaction_frames = -1
+	threat_will_defend = false
+
+
+func _should_defend_threat(opponent: Fighter) -> bool:
+	# Commit to one read per attack. A failed read stays failed until the
+	# opponent starts a different action, preventing frame-by-frame rerolls from
+	# turning a fallible reaction chance into near-perfect defense.
+	if threat_reaction_frames < 0:
+		threat_reaction_frames = rng.randi_range(
+			THREAT_REACTION_MIN_FRAMES,
+			THREAT_REACTION_MAX_FRAMES
+		)
+		threat_will_defend = rng.randf() < _threat_defense_chance(opponent.current_attack())
+	if threat_reaction_frames > 0:
+		threat_reaction_frames -= 1
+		return false
+	return threat_will_defend
+
+
+func _threat_defense_chance(attack: Dictionary) -> float:
+	if bool(attack.get("grab", false)) or bool(attack.get("unblockable", false)):
+		return THROW_DEFENSE_CHANCE
+	if bool(attack.get("projectile", false)):
+		return PROJECTILE_DEFENSE_CHANCE
+	if bool(attack.get("super", false)):
+		return SUPER_DEFENSE_CHANCE
+	return NORMAL_DEFENSE_CHANCE
 
 
 func _space_in_direction(cpu: Fighter, direction: float) -> float:
