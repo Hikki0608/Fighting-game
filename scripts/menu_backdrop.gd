@@ -5,8 +5,10 @@ const DESIGN_SIZE := Vector2(1152.0, 648.0)
 const LEFT_ACCENT := Color("2cccf4")
 const RIGHT_ACCENT := Color("ff4f86")
 const GOLD_ACCENT := Color("f5d77a")
+const REDRAW_INTERVAL := 1.0 / 30.0
 
 var animation_time := 0.0
+var redraw_accumulator := 0.0
 var motes: Array[Dictionary] = []
 
 
@@ -30,6 +32,10 @@ func _process(delta: float) -> void:
 	if not is_visible_in_tree():
 		return
 	animation_time = fmod(animation_time + delta, 3600.0)
+	redraw_accumulator += delta
+	if redraw_accumulator < REDRAW_INTERVAL:
+		return
+	redraw_accumulator = fmod(redraw_accumulator, REDRAW_INTERVAL)
 	queue_redraw()
 
 
@@ -38,25 +44,25 @@ func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, canvas_size), Color("071019"), true)
 
 	# Layered bands give the arena backdrop a polished, deep-blue grade.
-	for band in 12:
-		var ratio := float(band) / 11.0
+	for band in 8:
+		var ratio := float(band) / 7.0
 		var band_color := Color(
 			0.018 + ratio * 0.012,
 			0.052 + ratio * 0.008,
 			0.076 + ratio * 0.018,
 			0.82
 		)
-		var band_height := canvas_size.y / 12.0 + 1.0
+		var band_height := canvas_size.y / 8.0 + 1.0
 		draw_rect(
-			Rect2(0.0, float(band) * canvas_size.y / 12.0, canvas_size.x, band_height),
+			Rect2(0.0, float(band) * canvas_size.y / 8.0, canvas_size.x, band_height),
 			band_color,
 			true
 		)
 
 	# Cyan and crimson spotlights visually connect the menu to both fighters.
-	for layer in 8:
-		var glow_radius := 520.0 - float(layer) * 54.0
-		var glow_alpha := 0.010 + float(layer) * 0.004
+	for layer in 5:
+		var glow_radius := 520.0 - float(layer) * 86.0
+		var glow_alpha := 0.014 + float(layer) * 0.006
 		draw_circle(Vector2(-86.0, 352.0), glow_radius, Color(LEFT_ACCENT, glow_alpha))
 		draw_circle(
 			Vector2(canvas_size.x + 86.0, 352.0),
@@ -129,8 +135,8 @@ func _draw() -> void:
 		2.0
 	)
 
-	for edge in 8:
-		var edge_alpha := 0.025 + float(edge) * 0.014
+	for edge in 5:
+		var edge_alpha := 0.035 + float(edge) * 0.024
 		draw_rect(
 			Rect2(float(edge) * 18.0, 0.0, 19.0, canvas_size.y),
 			Color(0.0, 0.0, 0.0, edge_alpha),

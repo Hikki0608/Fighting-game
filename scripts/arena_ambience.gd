@@ -12,10 +12,36 @@ var animation_time := 0.0
 var redraw_accumulator := 0.0
 var celebration_seconds := 0.0
 var super_pulse_seconds := 0.0
+var first_visible_tile := 0
+var last_visible_tile := 0
 
 
 func configure(center_x: float) -> void:
 	arena_center_x = center_x
+
+
+func set_camera_view(center_x: float, visible_half_width: float) -> void:
+	# Each background copy is wider than the viewport. Restrict procedural
+	# flames, banners, and dust to copies that can actually be seen instead of
+	# submitting all three copies to the renderer every frame.
+	var center_tile_left := arena_center_x - TILE_HALF_WIDTH
+	var visible_left := center_x - visible_half_width + 1.0
+	var visible_right := center_x + visible_half_width - 1.0
+	var next_first := clampi(
+		floori((visible_left - center_tile_left) / TILE_WIDTH),
+		-1,
+		1
+	)
+	var next_last := clampi(
+		floori((visible_right - center_tile_left) / TILE_WIDTH),
+		-1,
+		1
+	)
+	if next_first == first_visible_tile and next_last == last_visible_tile:
+		return
+	first_visible_tile = next_first
+	last_visible_tile = next_last
+	queue_redraw()
 
 
 func celebrate(duration := 1.6) -> void:
@@ -42,7 +68,7 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	var celebration_strength := clampf(celebration_seconds / 1.6, 0.0, 1.0)
 	var super_strength := clampf(super_pulse_seconds / 0.7, 0.0, 1.0)
-	for tile_index in range(-1, 2):
+	for tile_index in range(first_visible_tile, last_visible_tile + 1):
 		var tile_left := arena_center_x + float(tile_index) * TILE_WIDTH - TILE_HALF_WIDTH
 		_draw_flame(Vector2(tile_left + 252.0, 364.0), 1.0, float(tile_index) + 0.2)
 		_draw_flame(Vector2(tile_left + 900.0, 364.0), 1.0, float(tile_index) + 1.7)
