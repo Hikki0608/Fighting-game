@@ -8,10 +8,10 @@ const ARENA_RIGHT := ARENA_WIDTH - 76.0
 const GRAVITY := 2350.0
 const WALK_SPEED := 275.0
 const FORWARD_WALK_SPEED := 320.0
-const AIR_MOVE_SPEED := 310.0
-const AIR_ATTACK_MOVE_SPEED := 300.0
-const AIR_ATTACK_CONTROL_ACCELERATION := 40.0
-const AIR_ATTACK_DRAG := 8.0
+const AIR_MOVE_SPEED := 470.0
+const AIR_ATTACK_MOVE_SPEED := 420.0
+const AIR_ATTACK_CONTROL_ACCELERATION := 78.0
+const AIR_ATTACK_DRAG := 10.0
 # Tuned against the closest battle-camera zoom so the neutral jump pose reaches
 # the space just below the health HUD without entering it.
 const JUMP_SPEED := -1100.0
