@@ -70,6 +70,7 @@ jobs:
           "${GODOT_EDITOR}" --headless --path . --script tests/step_input_smoke.gd
           "${GODOT_EDITOR}" --headless --path . --script tests/air_mobility_smoke.gd
           "${GODOT_EDITOR}" --headless --path . --script tests/combo_ui_smoke.gd
+          "${GODOT_EDITOR}" --headless --path . --script tests/cpu_reaction_smoke.gd
           "${GODOT_EDITOR}" --headless --path . --script tests/combat_effects_smoke.gd
 
       - name: Export Web game
