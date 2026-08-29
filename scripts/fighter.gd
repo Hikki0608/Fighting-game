@@ -1,6 +1,8 @@
 class_name Fighter
 extends Node2D
 
+const SpriteAlphaBoundsData := preload("res://scripts/sprite_alpha_bounds.gd")
+
 const GROUND_Y := 558.0
 const ARENA_WIDTH := 2016.0
 const ARENA_LEFT := 76.0
@@ -23,6 +25,7 @@ const HURTBOX_WIDTH := VISUAL_SIZE * 0.48
 const HURTBOX_HEIGHT := VISUAL_SIZE * 0.885
 const CROUCH_HURTBOX_WIDTH := VISUAL_SIZE * 0.52
 const CROUCH_HURTBOX_HEIGHT := VISUAL_SIZE * 0.64
+const SPRITE_HURTBOX_SOURCE_INSET := 3.0
 const SPRITE_SHEET_CELL_SIZE := 256.0
 const SPRITE_DRAW_OFFSET_Y := 8.0
 const STATIC_SPRITE_DRAW_OFFSET_Y := 7.0
@@ -1005,6 +1008,13 @@ func attack_rect() -> Rect2:
 
 
 func hurt_rect() -> Rect2:
+	var sprite_frame := _displayed_sprite_frame()
+	var source_bounds := SpriteAlphaBoundsData.rect_for(character_id, sprite_frame)
+	if source_bounds.has_area():
+		return _sprite_hurt_rect(sprite_frame, source_bounds)
+
+	# Keep a stable fallback for characters that do not provide sprite-bound
+	# metadata. Ren and Vel use the frame-accurate path above.
 	var crouching := state == &"crouch" or state == &"crouch_light" or state == &"crouch_heavy"
 	var height := CROUCH_HURTBOX_HEIGHT if crouching else HURTBOX_HEIGHT
 	var width := CROUCH_HURTBOX_WIDTH if crouching else HURTBOX_WIDTH
@@ -1019,6 +1029,52 @@ func hurt_rect() -> Rect2:
 		height = lerpf(HURTBOX_HEIGHT, HURTBOX_WIDTH, fall_progress)
 		center_x += _knockdown_horizontal_offset(fall_progress)
 	return Rect2(center_x - width * 0.5, position.y - height, width, height)
+
+
+func _sprite_hurt_rect(sprite_frame: Vector3i, source_bounds: Rect2) -> Rect2:
+	var safe_inset := minf(
+		SPRITE_HURTBOX_SOURCE_INSET,
+		minf(source_bounds.size.x, source_bounds.size.y) * 0.1
+	)
+	var fitted_source_bounds := source_bounds.grow(-safe_inset)
+	var render_scale := _sprite_render_scale(sprite_frame)
+	var rendered_size := VISUAL_SIZE * render_scale
+	var source_to_local := rendered_size / SPRITE_SHEET_CELL_SIZE
+	var grounding_offset_y := _sprite_grounding_offset_y(sprite_frame)
+	var sprite_origin := Vector2(
+		-rendered_size * 0.5,
+		(-VISUAL_SIZE + SPRITE_DRAW_OFFSET_Y + grounding_offset_y) * render_scale
+	)
+	var local_rect := Rect2(
+		sprite_origin + fitted_source_bounds.position * source_to_local,
+		fitted_source_bounds.size * source_to_local
+	)
+
+	# Match the exact transform used by _draw(): animated sprites retain only a
+	# quarter of the procedural offset and a fifth of its rotation.
+	var pose := _visual_pose()
+	var visual_offset: Vector2 = pose.offset * 0.25
+	var visual_rotation: float = float(pose.rotation) * 0.2
+	var visual_direction := -1.0 if float(pose.scale.x) < 0.0 else 1.0
+	var local_corners := [
+		local_rect.position,
+		Vector2(local_rect.end.x, local_rect.position.y),
+		local_rect.end,
+		Vector2(local_rect.position.x, local_rect.end.y)
+	]
+	var world_min := Vector2(INF, INF)
+	var world_max := Vector2(-INF, -INF)
+	for local_corner in local_corners:
+		var transformed_corner := Vector2(
+			local_corner.x * visual_direction,
+			local_corner.y
+		).rotated(visual_rotation)
+		transformed_corner += position + visual_offset
+		world_min.x = minf(world_min.x, transformed_corner.x)
+		world_min.y = minf(world_min.y, transformed_corner.y)
+		world_max.x = maxf(world_max.x, transformed_corner.x)
+		world_max.y = maxf(world_max.y, transformed_corner.y)
+	return Rect2(world_min, world_max - world_min)
 
 
 func _knockdown_horizontal_offset(progress: float) -> float:
@@ -1475,7 +1531,18 @@ func _animated_sprite_frame() -> Vector3i:
 
 
 func _has_character_image() -> bool:
-	return _animated_sprite_frame().x >= 0 or character_texture != null
+	return _displayed_sprite_frame().x >= 0 or character_texture != null
+
+
+func _displayed_sprite_frame() -> Vector3i:
+	var sprite_frame := _animated_sprite_frame()
+	var transition_active := (
+		sprite_transition_frames > 0
+		and sprite_transition_target == state
+		and sprite_transition_from.x >= 0
+		and sprite_transition_from != sprite_frame
+	)
+	return sprite_transition_from if transition_active else sprite_frame
 
 
 func _ren_sprite_bottom_gap_table(sheet_index: int) -> Array:
@@ -1550,18 +1617,8 @@ func _draw_animated_sprite_frame(sprite_frame: Vector3i, modulate: Color) -> boo
 
 
 func _draw_character_image(modulate: Color) -> bool:
-	var sprite_frame := _animated_sprite_frame()
+	var sprite_frame := _displayed_sprite_frame()
 	if sprite_frame.x >= 0:
-		var transition_active := (
-			sprite_transition_frames > 0
-			and sprite_transition_target == state
-			and sprite_transition_from.x >= 0
-			and sprite_transition_from != sprite_frame
-		)
-		if transition_active:
-			# One exact bridge frame preserves the previous silhouette without the
-			# double-image blur produced by alpha-blending unrelated sprite poses.
-			return _draw_animated_sprite_frame(sprite_transition_from, modulate)
 		return _draw_animated_sprite_frame(sprite_frame, modulate)
 	if character_texture != null:
 		draw_texture_rect(
