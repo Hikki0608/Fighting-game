@@ -58,6 +58,13 @@ func _run() -> void:
 
 	p1.reset_for_round(Vector2(650.0, Fighter.GROUND_Y))
 	_advance(p1, p2, Vector2(1.0, 0.0))
+	for frame in 12:
+		_advance(p1, p2, Vector2.ZERO)
+	_advance(p1, p2, Vector2(1.0, 0.0))
+	_expect(p1.state == &"forward_step", "the extended double-tap window must accept a 12-frame gap")
+
+	p1.reset_for_round(Vector2(650.0, Fighter.GROUND_Y))
+	_advance(p1, p2, Vector2(1.0, 0.0))
 	for frame in Fighter.DOUBLE_TAP_WINDOW_FRAMES + 2:
 		_advance(p1, p2, Vector2.ZERO)
 	_advance(p1, p2, Vector2(1.0, 0.0))
