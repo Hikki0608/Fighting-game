@@ -437,6 +437,8 @@ func _cannot_choose_action(cpu: Fighter) -> bool:
 		cpu.state == &"hitstun"
 		or cpu.state == &"blockstun"
 		or cpu.state == &"knockdown"
+		or cpu.state == &"forward_step"
+		or cpu.state == &"back_step"
 		or cpu.state == &"vel_shadow"
 	)
 

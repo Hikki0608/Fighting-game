@@ -64,6 +64,11 @@ jobs:
         run: |
           "${GODOT_EDITOR}" --headless --path . --import
 
+      - name: Run gameplay smoke tests
+        shell: bash
+        run: |
+          "${GODOT_EDITOR}" --headless --path . --script tests/step_input_smoke.gd
+
       - name: Export Web game
         shell: bash
         run: |
