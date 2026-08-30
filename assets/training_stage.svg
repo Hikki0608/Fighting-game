@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1152" height="648" viewBox="0 0 1152 648">
+<svg xmlns="http://www.w3.org/2000/svg" width="2016" height="648" viewBox="0 0 2016 648">
   <defs>
     <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#6f7478"/>
@@ -27,69 +27,67 @@
       <stop offset="0.48" stop-color="#11171b" stop-opacity="0"/>
       <stop offset="1" stop-color="#11171b" stop-opacity="0.28"/>
     </linearGradient>
-    <pattern id="minor-grid" width="24" height="24" patternUnits="userSpaceOnUse">
-      <path d="M24 0H0V24" fill="none" stroke="#343a3e" stroke-width="1" opacity="0.44"/>
-      <path d="M12 0V24M0 12H24" fill="none" stroke="#343a3e" stroke-width="0.55" opacity="0.2"/>
-    </pattern>
-    <pattern id="major-grid" width="96" height="96" patternUnits="userSpaceOnUse">
-      <path d="M96 0H0V96" fill="none" stroke="#20272b" stroke-width="1.7" opacity="0.54"/>
-    </pattern>
-    <clipPath id="back-wall-clip">
-      <rect width="1152" height="374"/>
-    </clipPath>
     <clipPath id="floor-clip">
-      <path d="M0 374H1152V648H0Z"/>
+      <path d="M0 374H2016V648H0Z"/>
     </clipPath>
   </defs>
 
-  <rect width="1152" height="648" fill="#3b4246"/>
+  <rect width="2016" height="648" fill="#3b4246"/>
 
-  <!-- Rear measurement wall -->
-  <rect width="1152" height="374" fill="url(#wall)"/>
-  <rect width="1152" height="374" fill="url(#minor-grid)"/>
-  <rect width="1152" height="374" fill="url(#major-grid)"/>
+  <!-- Rear measurement wall: both grid levels repeat evenly across the full arena. -->
+  <rect width="2016" height="374" fill="url(#wall)"/>
+  <g id="wall-grid" data-minor-spacing="24" data-major-spacing="72" fill="none">
+    <path d="M0 0V374M24 0V374M48 0V374M72 0V374M96 0V374M120 0V374M144 0V374M168 0V374M192 0V374M216 0V374M240 0V374M264 0V374M288 0V374M312 0V374M336 0V374M360 0V374M384 0V374M408 0V374M432 0V374M456 0V374M480 0V374M504 0V374M528 0V374M552 0V374M576 0V374M600 0V374M624 0V374M648 0V374M672 0V374M696 0V374M720 0V374M744 0V374M768 0V374M792 0V374M816 0V374M840 0V374M864 0V374M888 0V374M912 0V374M936 0V374M960 0V374M984 0V374M1008 0V374M1032 0V374M1056 0V374M1080 0V374M1104 0V374M1128 0V374M1152 0V374M1176 0V374M1200 0V374M1224 0V374M1248 0V374M1272 0V374M1296 0V374M1320 0V374M1344 0V374M1368 0V374M1392 0V374M1416 0V374M1440 0V374M1464 0V374M1488 0V374M1512 0V374M1536 0V374M1560 0V374M1584 0V374M1608 0V374M1632 0V374M1656 0V374M1680 0V374M1704 0V374M1728 0V374M1752 0V374M1776 0V374M1800 0V374M1824 0V374M1848 0V374M1872 0V374M1896 0V374M1920 0V374M1944 0V374M1968 0V374M1992 0V374M2016 0V374M0 0H2016M0 24H2016M0 48H2016M0 72H2016M0 96H2016M0 120H2016M0 144H2016M0 168H2016M0 192H2016M0 216H2016M0 240H2016M0 264H2016M0 288H2016M0 312H2016M0 336H2016M0 360H2016" stroke="#343a3e" stroke-width="0.8" opacity="0.34"/>
+    <path d="M0 0V374M72 0V374M144 0V374M216 0V374M288 0V374M360 0V374M432 0V374M504 0V374M576 0V374M648 0V374M720 0V374M792 0V374M864 0V374M936 0V374M1008 0V374M1080 0V374M1152 0V374M1224 0V374M1296 0V374M1368 0V374M1440 0V374M1512 0V374M1584 0V374M1656 0V374M1728 0V374M1800 0V374M1872 0V374M1944 0V374M2016 0V374M0 0H2016M0 72H2016M0 144H2016M0 216H2016M0 288H2016M0 360H2016" stroke="#20272b" stroke-width="1.7" opacity="0.54"/>
+  </g>
 
-  <!-- Angled side walls recreate the enclosed studio-room perspective. -->
+  <!-- The room edges now sit at the playable arena edges instead of repeating per screen. -->
   <path d="M0 0H112L176 78V374H0Z" fill="url(#side-left)" opacity="0.42"/>
-  <path d="M1152 0H1040L976 78V374H1152Z" fill="url(#side-right)" opacity="0.42"/>
+  <path d="M2016 0H1904L1840 78V374H2016Z" fill="url(#side-right)" opacity="0.42"/>
 
   <!-- Ceiling reference frame -->
-  <path d="M112 0L176 78H976L1040 0" fill="none" stroke="#31383c" stroke-width="8" opacity="0.72"/>
-  <path d="M112 0L176 78H976L1040 0" fill="none" stroke="#c51f2d" stroke-width="4"/>
-  <path d="M176 78V94M976 78V94" stroke="#e53a44" stroke-width="3"/>
+  <path d="M112 0L176 78H1840L1904 0" fill="none" stroke="#31383c" stroke-width="8" opacity="0.72"/>
+  <path d="M112 0L176 78H1840L1904 0" fill="none" stroke="#c51f2d" stroke-width="4"/>
+  <path d="M176 78V94M1840 78V94" stroke="#e53a44" stroke-width="3"/>
 
-  <!-- Perspective floor -->
-  <path d="M0 374H1152V648H0Z" fill="url(#floor)"/>
+  <!-- One continuous perspective floor covers the complete 2016 px stage. -->
+  <path d="M0 374H2016V648H0Z" fill="url(#floor)"/>
   <g clip-path="url(#floor-clip)" fill="none" stroke="#30373b">
-    <!-- The guide endpoints are 96 px apart, matching the wall's major grid. -->
-    <path d="M576 356L0 648M576 356L96 648M576 356L192 648M576 356L288 648M576 356L384 648M576 356L480 648M576 356L576 648M576 356L672 648M576 356L768 648M576 356L864 648M576 356L960 648M576 356L1056 648M576 356L1152 648" stroke-width="1.35" opacity="0.64"/>
-    <!-- Keep horizontal floor guides at a constant 40 px screen-space interval. -->
-    <path d="M0 392H1152M0 432H1152M0 472H1152M0 512H1152M0 552H1152M0 592H1152M0 632H1152" stroke-width="1.35" opacity="0.65"/>
+    <!-- Every floor ray lands exactly 72 px apart at the front edge. -->
+    <path d="M1008 356L0 648M1008 356L72 648M1008 356L144 648M1008 356L216 648M1008 356L288 648M1008 356L360 648M1008 356L432 648M1008 356L504 648M1008 356L576 648M1008 356L648 648M1008 356L720 648M1008 356L792 648M1008 356L864 648M1008 356L936 648M1008 356L1008 648M1008 356L1080 648M1008 356L1152 648M1008 356L1224 648M1008 356L1296 648M1008 356L1368 648M1008 356L1440 648M1008 356L1512 648M1008 356L1584 648M1008 356L1656 648M1008 356L1728 648M1008 356L1800 648M1008 356L1872 648M1008 356L1944 648M1008 356L2016 648" stroke-width="1.35" opacity="0.64"/>
+    <!-- Six guides divide the 274 px floor depth into seven equal intervals. -->
+    <path d="M0 413.143H2016M0 452.286H2016M0 491.429H2016M0 530.571H2016M0 569.714H2016M0 608.857H2016" stroke-width="1.35" opacity="0.65"/>
   </g>
 
   <!-- Neutral-axis guides -->
-  <path d="M576 0V374" stroke="#73141d" stroke-width="9" opacity="0.45"/>
-  <path d="M576 0V374" stroke="#df1f2d" stroke-width="4"/>
-  <path d="M569 374H583L590 648H562Z" fill="#8f101d" opacity="0.75"/>
-  <path d="M574 374H578L582 648H570Z" fill="#f12834"/>
-  <path d="M0 552H1152" stroke="#7c111c" stroke-width="11" opacity="0.46"/>
-  <path d="M0 552H1152" stroke="#dc1d2b" stroke-width="4"/>
-  <path d="M0 374H1152" stroke="#262d31" stroke-width="5" opacity="0.62"/>
-  <path d="M0 376H1152" stroke="#aeb4b7" stroke-width="2" opacity="0.75"/>
+  <path d="M1008 0V374" stroke="#73141d" stroke-width="9" opacity="0.45"/>
+  <path d="M1008 0V374" stroke="#df1f2d" stroke-width="4"/>
+  <path d="M1001 374H1015L1022 648H994Z" fill="#8f101d" opacity="0.75"/>
+  <path d="M1006 374H1010L1014 648H1002Z" fill="#f12834"/>
+  <path d="M0 552H2016" stroke="#7c111c" stroke-width="11" opacity="0.46"/>
+  <path d="M0 552H2016" stroke="#dc1d2b" stroke-width="4"/>
+  <path d="M0 374H2016" stroke="#262d31" stroke-width="5" opacity="0.62"/>
+  <path d="M0 376H2016" stroke="#aeb4b7" stroke-width="2" opacity="0.75"/>
 
-  <!-- Small distance ticks make spacing readable during combo practice. -->
-  <g stroke="#e52a36" stroke-width="3" opacity="0.9">
-    <path d="M432 544V560M504 544V560M648 544V560M720 544V560"/>
-  </g>
+  <!-- Distance ticks continue every 72 px from the left edge to the right edge. -->
+  <path id="distance-guides" data-spacing="72" d="M0 544V560M72 544V560M144 544V560M216 544V560M288 544V560M360 544V560M432 544V560M504 544V560M576 544V560M648 544V560M720 544V560M792 544V560M864 544V560M936 544V560M1008 544V560M1080 544V560M1152 544V560M1224 544V560M1296 544V560M1368 544V560M1440 544V560M1512 544V560M1584 544V560M1656 544V560M1728 544V560M1800 544V560M1872 544V560M1944 544V560M2016 544V560" fill="none" stroke="#e52a36" stroke-width="3" opacity="0.9"/>
   <g fill="#3a4044" font-family="sans-serif" font-size="13" font-weight="700" text-anchor="middle" opacity="0.72">
-    <text x="432" y="578">-2</text>
-    <text x="504" y="578">-1</text>
-    <text x="576" y="578">0</text>
-    <text x="648" y="578">1</text>
-    <text x="720" y="578">2</text>
+    <text x="144" y="578">-12</text>
+    <text x="288" y="578">-10</text>
+    <text x="432" y="578">-8</text>
+    <text x="576" y="578">-6</text>
+    <text x="720" y="578">-4</text>
+    <text x="864" y="578">-2</text>
+    <text x="1008" y="578">0</text>
+    <text x="1152" y="578">2</text>
+    <text x="1296" y="578">4</text>
+    <text x="1440" y="578">6</text>
+    <text x="1584" y="578">8</text>
+    <text x="1728" y="578">10</text>
+    <text x="1872" y="578">12</text>
   </g>
 
-  <rect width="1152" height="648" fill="url(#room-light)"/>
-  <rect width="1152" height="648" fill="url(#vignette)"/>
-  <rect x="8" y="8" width="1136" height="632" fill="none" stroke="#ced3d5" stroke-width="2" opacity="0.18"/>
+  <rect width="2016" height="648" fill="url(#room-light)"/>
+  <rect width="2016" height="648" fill="url(#vignette)"/>
+  <rect x="8" y="8" width="2000" height="632" fill="none" stroke="#ced3d5" stroke-width="2" opacity="0.18"/>
 </svg>
