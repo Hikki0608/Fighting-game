@@ -83,6 +83,19 @@ const CHARACTER_ROSTER := [
 		"id": &"ren",
 		"name": "REN",
 		"title": "AZURE TACTICIAN",
+		"guide_style": "万能型  •  間合いとタイミングを支配",
+		"guide_features": [
+			"飛び道具と対空で相手を動かし、瞬閃掌で一気に距離を詰められる。",
+			"弱 → 強 → 必殺の基本コンボが安定し、攻守のバランスが良い。",
+			"蒼天衝は発生直後に無敵があり、守りからの切り返しに強い。"
+		],
+		"guide_moves": [
+			{"command": "SP", "name": "蒼波拳 / AZURE PULSE", "description": "青い衝撃波を飛ばして遠距離を制圧。"},
+			{"command": "前 + SP", "name": "瞬閃掌 / FLASH PALM", "description": "高速で踏み込み、掌底で間合いを詰める。"},
+			{"command": "下 + SP", "name": "蒼天衝 / SKY BREAK", "description": "発生直後に無敵がある上昇対空。"},
+			{"command": "空中 + SP", "name": "流星脚 / COMET DIVE", "description": "斜め下へ急降下して奇襲する。"},
+			{"command": "ゲージMAX + 弱 + 強", "name": "零式・蒼閃連舞 / AZURE ZERO", "description": "高速突進から5連撃を行う超必殺技。"}
+		],
 		"color": Color("2cccf4"),
 		"texture": RenFighterTexture,
 		"animation_textures": [
@@ -97,6 +110,20 @@ const CHARACTER_ROSTER := [
 		"id": &"vel",
 		"name": "VEL",
 		"title": "CRIMSON HUNTER",
+		"guide_style": "攻撃型  •  接近とガード崩しに特化",
+		"guide_features": [
+			"長い踏み込みと飛びかかりで相手に張り付き、攻めを継続する。",
+			"獣牙跳の中段と投げを使い分け、立ち／しゃがみガードを揺さぶる。",
+			"影狩りから弱・強へ派生でき、離れた相手にも一気に接近できる。"
+		],
+		"guide_moves": [
+			{"command": "SP", "name": "紅裂爪 / CRIMSON RAKE", "description": "前進しながら3回切り裂く。"},
+			{"command": "前 + SP", "name": "獣牙跳 / PREDATOR POUNCE", "description": "頭上から襲う中段。ヒット時はダウン。"},
+			{"command": "下 + SP", "name": "狩天爪 / HUNTER RISE", "description": "無敵はないが高威力の上昇対空。"},
+			{"command": "後ろ + SP", "name": "影狩り / SHADOW HUNT", "description": "後退後に長距離を急接近。弱・強へ派生可能。"},
+			{"command": "空中 + SP", "name": "断頭爪 / REAPER DIVE", "description": "相手を短時間ダウンさせる急降下攻撃。"},
+			{"command": "ゲージMAX + 弱 + 強", "name": "紅月・獣王裂 / RED ECLIPSE", "description": "ガード不能の突進捕獲超必殺技。"}
+		],
 		"color": Color("ff4f86"),
 		"texture": VelFighterTexture,
 		"animation_textures": [
@@ -217,6 +244,8 @@ var character_selection := [0, 1]
 var selecting_player := 0
 var cpu_controller: CpuController
 var meta_key_state := {}
+var meta_joy_button_state := {}
+var character_guide_visible := false
 var training_guard_mode := TRAINING_GUARD_OFF
 var training_guard_armed := false
 var training_guard_release_frames := 0
@@ -270,6 +299,14 @@ var fullscreen_button: Button
 var character_prompt_label: Label
 var character_summary_label: Label
 var character_hint_label: Label
+var character_guide_button: Button
+var character_guide_overlay: ColorRect
+var character_guide_panel: Panel
+var character_guide_portrait: TextureRect
+var character_guide_title_label: Label
+var character_guide_style_label: Label
+var character_guide_features_label: Label
+var character_guide_moves_label: Label
 var character_buttons: Array[Button] = []
 var character_status_labels: Array[Label] = []
 var last_drawn_p1_health := -1
@@ -913,6 +950,19 @@ func _make_training_panel_style(accent: Color) -> StyleBoxFlat:
 	return style
 
 
+func _make_character_guide_style(accent: Color) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.012, 0.032, 0.046, 0.985)
+	style.border_color = Color(accent, 0.88)
+	style.set_border_width_all(2)
+	style.border_width_left = 8
+	style.set_corner_radius_all(12)
+	style.shadow_color = Color(0.0, 0.0, 0.0, 0.78)
+	style.shadow_size = 24
+	style.shadow_offset = Vector2(0.0, 9.0)
+	return style
+
+
 func _create_stage_select_menu() -> void:
 	stage_select_layer = CanvasLayer.new()
 	stage_select_layer.layer = 11
@@ -1214,7 +1264,7 @@ func _create_character_select_menu() -> void:
 	character_select_layer.add_child(versus_mark)
 
 	character_summary_label = Label.new()
-	character_summary_label.position = Vector2(126.0, 538.0)
+	character_summary_label.position = Vector2(126.0, 530.0)
 	character_summary_label.size = Vector2(900.0, 32.0)
 	character_summary_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	character_summary_label.add_theme_font_size_override("font_size", 18)
@@ -1222,14 +1272,113 @@ func _create_character_select_menu() -> void:
 	character_summary_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	character_select_layer.add_child(character_summary_label)
 
+	character_guide_button = Button.new()
+	character_guide_button.position = Vector2(438.0, 566.0)
+	character_guide_button.size = Vector2(276.0, 38.0)
+	character_guide_button.focus_mode = Control.FOCUS_NONE
+	character_guide_button.add_theme_font_size_override("font_size", 14)
+	character_guide_button.pressed.connect(_show_character_guide)
+	character_select_layer.add_child(character_guide_button)
+
 	character_hint_label = Label.new()
-	character_hint_label.position = Vector2(126.0, 578.0)
-	character_hint_label.size = Vector2(900.0, 44.0)
+	character_hint_label.position = Vector2(76.0, 610.0)
+	character_hint_label.size = Vector2(1000.0, 26.0)
 	character_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	character_hint_label.add_theme_font_size_override("font_size", 15)
+	character_hint_label.add_theme_font_size_override("font_size", 12)
 	character_hint_label.add_theme_color_override("font_color", Color("91acb7"))
 	character_hint_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	character_select_layer.add_child(character_hint_label)
+
+	_create_character_guide_overlay()
+
+
+func _create_character_guide_overlay() -> void:
+	character_guide_overlay = ColorRect.new()
+	character_guide_overlay.position = Vector2.ZERO
+	character_guide_overlay.size = SCREEN_SIZE
+	character_guide_overlay.color = Color(0.0, 0.008, 0.014, 0.9)
+	character_guide_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	character_guide_overlay.visible = false
+	character_select_layer.add_child(character_guide_overlay)
+
+	character_guide_panel = Panel.new()
+	character_guide_panel.position = Vector2(58.0, 28.0)
+	character_guide_panel.size = Vector2(1036.0, 592.0)
+	character_guide_overlay.add_child(character_guide_panel)
+
+	character_guide_title_label = Label.new()
+	character_guide_title_label.position = Vector2(34.0, 18.0)
+	character_guide_title_label.size = Vector2(968.0, 46.0)
+	character_guide_title_label.add_theme_font_size_override("font_size", 30)
+	character_guide_title_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+	character_guide_title_label.add_theme_constant_override("shadow_offset_x", 2)
+	character_guide_title_label.add_theme_constant_override("shadow_offset_y", 2)
+	character_guide_title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	character_guide_panel.add_child(character_guide_title_label)
+
+	character_guide_style_label = Label.new()
+	character_guide_style_label.position = Vector2(36.0, 65.0)
+	character_guide_style_label.size = Vector2(964.0, 30.0)
+	character_guide_style_label.add_theme_font_size_override("font_size", 17)
+	character_guide_style_label.add_theme_color_override("font_color", Color("d8f7ff"))
+	character_guide_style_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	character_guide_panel.add_child(character_guide_style_label)
+
+	character_guide_portrait = TextureRect.new()
+	character_guide_portrait.position = Vector2(34.0, 108.0)
+	character_guide_portrait.size = Vector2(270.0, 410.0)
+	character_guide_portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	character_guide_portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	character_guide_portrait.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	character_guide_portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	character_guide_panel.add_child(character_guide_portrait)
+
+	character_guide_features_label = Label.new()
+	character_guide_features_label.position = Vector2(330.0, 108.0)
+	character_guide_features_label.size = Vector2(668.0, 100.0)
+	character_guide_features_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	character_guide_features_label.add_theme_font_size_override("font_size", 15)
+	character_guide_features_label.add_theme_constant_override("line_spacing", 2)
+	character_guide_features_label.add_theme_color_override("font_color", Color("e7f9ff"))
+	character_guide_features_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	character_guide_panel.add_child(character_guide_features_label)
+
+	character_guide_moves_label = Label.new()
+	character_guide_moves_label.position = Vector2(330.0, 210.0)
+	character_guide_moves_label.size = Vector2(668.0, 316.0)
+	character_guide_moves_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	character_guide_moves_label.add_theme_font_size_override("font_size", 14)
+	character_guide_moves_label.add_theme_constant_override("line_spacing", 1)
+	character_guide_moves_label.add_theme_color_override("font_color", Color("d8f7ff"))
+	character_guide_moves_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	character_guide_panel.add_child(character_guide_moves_label)
+
+	var controls_label := Label.new()
+	controls_label.position = Vector2(34.0, 538.0)
+	controls_label.size = Vector2(740.0, 38.0)
+	controls_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	controls_label.text = "操作  J: 弱  K: 強  L: SP  I: TH    /    PAD  X: 弱  Y: 強  B: SP  L1: TH"
+	controls_label.add_theme_font_size_override("font_size", 13)
+	controls_label.add_theme_color_override("font_color", Color("91acb7"))
+	controls_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	character_guide_panel.add_child(controls_label)
+
+	var close_button := Button.new()
+	close_button.position = Vector2(800.0, 538.0)
+	close_button.size = Vector2(198.0, 38.0)
+	close_button.text = "CLOSE  •  K / Y / ESC"
+	close_button.focus_mode = Control.FOCUS_NONE
+	close_button.add_theme_font_size_override("font_size", 13)
+	close_button.add_theme_stylebox_override(
+		"normal",
+		_make_button_style(Color("10252f"), Color("91acb7"), 2)
+	)
+	close_button.add_theme_stylebox_override(
+		"hover",
+		_make_button_style(Color("183746"), Color("fff3c4"), 3)
+	)
+	close_button.pressed.connect(_hide_character_guide)
+	character_guide_panel.add_child(close_button)
 
 
 func _make_character_card(index: int, card_position: Vector2) -> Button:
@@ -1299,6 +1448,7 @@ func _make_character_card(index: int, card_position: Vector2) -> Button:
 func _show_character_select(selected_mode: StringName) -> void:
 	phase = &"character_select"
 	game_mode = selected_mode
+	_hide_character_guide()
 	_reset_camera()
 	menu_layer.visible = false
 	stage_select_layer.visible = false
@@ -1326,25 +1476,18 @@ func _refresh_character_select() -> void:
 	if game_mode == MODE_SOLO:
 		character_selection[1] = (character_selection[0] + 1) % CHARACTER_ROSTER.size()
 		character_prompt_label.text = "PLAYER 1  -  CHOOSE YOUR FIGHTER"
-		character_hint_label.text = "A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / J: CONFIRM    ESC: BACK"
 	elif game_mode == MODE_TRAINING:
 		character_prompt_label.text = (
 			"PLAYER 1  -  CHOOSE YOUR FIGHTER"
 			if selecting_player == 0
 			else "TRAINING DUMMY  -  CHOOSE FIGHTER"
 		)
-		character_hint_label.text = (
-			"A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / J: CONFIRM    ESC: BACK"
-			if selecting_player == 0
-			else "A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / J: CONFIRM    ESC: BACK"
-		)
 	else:
 		character_prompt_label.text = "PLAYER %d  -  CHOOSE YOUR FIGHTER" % (selecting_player + 1)
-		character_hint_label.text = (
-			"A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / J: CONFIRM    ESC: BACK"
-			if selecting_player == 0
-			else "A / D OR LEFT / RIGHT: CHOOSE    ENTER / SPACE / J: CONFIRM    ESC: BACK"
-		)
+	character_hint_label.text = (
+		"A / D OR ← / →: CHOOSE    ENTER / SPACE / J: CONFIRM    "
+		+ "K / GAMEPAD Y: MOVE GUIDE    ESC: BACK"
+	)
 
 	var current_player_label := (
 		"DUMMY" if game_mode == MODE_TRAINING and selecting_player == 1
@@ -1391,9 +1534,66 @@ func _refresh_character_select() -> void:
 		opponent_label,
 		str(p2_data["name"])
 	]
+	var selected_data: Dictionary = CHARACTER_ROSTER[character_selection[selecting_player]]
+	var selected_accent: Color = selected_data["color"]
+	character_guide_button.text = "K / Y  •  %s MOVE GUIDE" % str(selected_data["name"])
+	character_guide_button.add_theme_color_override("font_color", Color("fff3c4"))
+	character_guide_button.add_theme_stylebox_override(
+		"normal",
+		_make_button_style(Color("10252f"), Color(selected_accent, 0.78), 2)
+	)
+	character_guide_button.add_theme_stylebox_override(
+		"hover",
+		_make_button_style(Color("183746"), Color("fff3c4"), 3)
+	)
+	character_guide_button.add_theme_stylebox_override(
+		"pressed",
+		_make_button_style(Color(selected_accent, 0.3), Color("fff3c4"), 3)
+	)
+
+
+func _show_character_guide() -> void:
+	if phase != &"character_select":
+		return
+	var character_data: Dictionary = CHARACTER_ROSTER[character_selection[selecting_player]]
+	var accent: Color = character_data["color"]
+	character_guide_visible = true
+	character_guide_overlay.visible = true
+	character_guide_panel.add_theme_stylebox_override("panel", _make_character_guide_style(accent))
+	character_guide_portrait.texture = character_data["texture"] as Texture2D
+	character_guide_title_label.text = "%s  //  %s" % [
+		str(character_data["name"]),
+		str(character_data["title"])
+	]
+	character_guide_title_label.add_theme_color_override("font_color", accent.lightened(0.25))
+	character_guide_style_label.text = str(character_data["guide_style"])
+
+	var feature_lines := PackedStringArray(["[ 特徴 / PLAY STYLE ]"])
+	for feature in character_data.get("guide_features", []):
+		feature_lines.append("◆ %s" % str(feature))
+	character_guide_features_label.text = "\n".join(feature_lines)
+
+	var move_lines := PackedStringArray(["[ 必殺技 / MOVE LIST ]"])
+	for move_data_value in character_data.get("guide_moves", []):
+		var move_data: Dictionary = move_data_value
+		move_lines.append("%s  ｜  %s" % [
+			str(move_data["command"]),
+			str(move_data["name"])
+		])
+		move_lines.append("      %s" % str(move_data["description"]))
+	character_guide_moves_label.text = "\n".join(move_lines)
+
+
+func _hide_character_guide() -> void:
+	character_guide_visible = false
+	if character_guide_overlay != null:
+		character_guide_overlay.visible = false
 
 
 func _handle_character_select_input() -> void:
+	if _character_guide_just_pressed():
+		_show_character_guide()
+		return
 	var left_pressed := _key_just_pressed(KEY_LEFT)
 	left_pressed = _key_just_pressed(KEY_A) or left_pressed
 	var right_pressed := _key_just_pressed(KEY_RIGHT)
@@ -1526,6 +1726,12 @@ func _handle_system_input() -> void:
 			_handle_stage_select_input()
 		return
 	if phase == &"character_select":
+		if character_guide_visible:
+			var guide_back_pressed := _key_just_pressed(KEY_M)
+			guide_back_pressed = _key_just_pressed(KEY_ESCAPE) or guide_back_pressed
+			if _character_guide_just_pressed() or guide_back_pressed:
+				_hide_character_guide()
+			return
 		var character_back_pressed := _key_just_pressed(KEY_M)
 		character_back_pressed = _key_just_pressed(KEY_ESCAPE) or character_back_pressed
 		if character_back_pressed:
@@ -1595,6 +1801,23 @@ func _key_just_pressed(keycode: Key) -> bool:
 	var was_down := bool(meta_key_state.get(keycode, false))
 	meta_key_state[keycode] = down
 	return down and not was_down
+
+
+func _joy_button_just_pressed(device: int, button: JoyButton) -> bool:
+	var state_key := Vector2i(device, int(button))
+	var down := Input.is_joy_button_pressed(device, button)
+	var was_down := bool(meta_joy_button_state.get(state_key, false))
+	meta_joy_button_state[state_key] = down
+	return down and not was_down
+
+
+func _character_guide_just_pressed() -> bool:
+	var keyboard_pressed := _key_just_pressed(Fighter.KEYBOARD_HEAVY_KEY)
+	var gamepad_pressed := false
+	for device in Input.get_connected_joypads():
+		var device_pressed := _joy_button_just_pressed(device, JOY_BUTTON_Y)
+		gamepad_pressed = device_pressed or gamepad_pressed
+	return keyboard_pressed or gamepad_pressed
 
 
 func _show_mode_menu() -> void:
