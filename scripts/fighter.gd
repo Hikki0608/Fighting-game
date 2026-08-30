@@ -238,6 +238,12 @@ const ATTACKS := {
 		"range": 148.0, "height": 92.0, "push": 8.0,
 		"hitstop": 7, "label": "AZURE ZERO", "effect": &"super_blue",
 		"bottom_offset": 12.0, "hit_frames": [7, 11, 15, 19, 25],
+		"final_hit_frame": 25,
+		"final_attack": {
+			"damage": 126, "chip": 12, "hitstun": 34, "blockstun": 18,
+			"push": 74.0, "hitstop": 15, "knockdown": true,
+			"launch_y": -390.0, "label": "AZURE ZERO FINISH"
+		},
 		"super": true, "meter_hit": 0, "meter_block": 0
 	},
 	&"vel_rake": {
@@ -246,6 +252,11 @@ const ATTACKS := {
 		"range": 112.0, "height": 84.0, "push": 12.0,
 		"hitstop": 6, "label": "CRIMSON RAKE", "effect": &"claw",
 		"bottom_offset": 16.0, "hit_frames": [7, 11, 15],
+		"final_hit_frame": 15,
+		"final_attack": {
+			"damage": 54, "hitstun": 21, "blockstun": 13,
+			"push": 34.0, "hitstop": 10
+		},
 		"meter_hit": 5, "meter_block": 3
 	},
 	&"vel_pounce": {
@@ -1005,26 +1016,13 @@ func current_attack() -> Dictionary:
 		back_throw.launch_y = -390.0
 		back_throw.back_throw = true
 		return back_throw
-	if state == &"ren_super" and state_frame >= 25:
-		var azure_finish := data.duplicate()
-		azure_finish.damage = 126
-		azure_finish.chip = 12
-		azure_finish.hitstun = 34
-		azure_finish.blockstun = 18
-		azure_finish.push = 74.0
-		azure_finish.hitstop = 15
-		azure_finish.knockdown = true
-		azure_finish.launch_y = -390.0
-		azure_finish.label = "AZURE ZERO FINISH"
-		return azure_finish
-	if state == &"vel_rake" and state_frame >= 15:
-		var rake_finish := data.duplicate()
-		rake_finish.damage = 54
-		rake_finish.hitstun = 21
-		rake_finish.blockstun = 13
-		rake_finish.push = 34.0
-		rake_finish.hitstop = 10
-		return rake_finish
+	var final_hit_frame := int(data.get("final_hit_frame", -1))
+	var final_attack_data: Dictionary = data.get("final_attack", {})
+	if final_hit_frame >= 0 and state_frame >= final_hit_frame and not final_attack_data.is_empty():
+		var final_attack := data.duplicate(true)
+		for property_name in final_attack_data:
+			final_attack[property_name] = final_attack_data[property_name]
+		return final_attack
 	return data
 
 

@@ -6,6 +6,7 @@ const MenuBackdropScript := preload("res://scripts/menu_backdrop.gd")
 const ArenaAmbienceScript := preload("res://scripts/arena_ambience.gd")
 const CombatEffectsScript := preload("res://scripts/combat_effects.gd")
 const TrainingInputHistoryPanelScript := preload("res://scripts/training_input_history_panel.gd")
+const TrainingFrameDataPanelScript := preload("res://scripts/training_frame_data_panel.gd")
 const ArenaBackgroundTexture := preload("res://assets/arena_background.svg")
 const TrainingStageTexture := preload("res://assets/training_stage.svg")
 const RenFighterTexture := preload("res://assets/characters/ren_fighter.png")
@@ -78,6 +79,7 @@ const TRAINING_GUARD_ALWAYS := 2
 const TRAINING_HEALTH_RECOVERY_FRAMES := 45
 const TRAINING_GUARD_RELEASE_FRAMES := 45
 const TRAINING_INPUT_HISTORY_SIZE := 8
+const TRAINING_FRAME_CHARACTERS := [&"ren", &"vel"]
 const CHARACTER_ROSTER := [
 	{
 		"id": &"ren",
@@ -259,6 +261,8 @@ var training_best_damage := 0
 var training_health_recovery_frames := 0
 var training_input_history: Array[Dictionary] = []
 var training_previous_axis := Vector2.ZERO
+var training_frame_data_visible := false
+var training_frame_data_character_index := 0
 var camera_center_x := ARENA_CENTER_X
 var camera_zoom := CAMERA_MIN_ZOOM
 var camera_shake_offset := Vector2.ZERO
@@ -274,6 +278,11 @@ var player_callout_labels: Array[Label] = []
 var training_label: Label
 var training_hud_label: Label
 var training_input_label: TrainingInputHistoryPanel
+var training_frame_data_layer: CanvasLayer
+var training_frame_data_overlay: ColorRect
+var training_frame_data_panel
+var training_frame_data_title_label: Label
+var training_frame_data_tabs: Array[Button] = []
 var mode_label: Label
 var menu_layer: CanvasLayer
 var menu_backdrop: Control
@@ -575,6 +584,69 @@ func _create_ui() -> void:
 	training_input_label.add_theme_stylebox_override("panel", _make_training_panel_style(Color("ff4f86")))
 	training_input_label.visible = false
 	add_child(training_input_label)
+
+	_create_training_frame_data_overlay()
+
+
+func _create_training_frame_data_overlay() -> void:
+	training_frame_data_layer = CanvasLayer.new()
+	training_frame_data_layer.layer = 20
+	training_frame_data_layer.visible = false
+	add_child(training_frame_data_layer)
+
+	training_frame_data_overlay = ColorRect.new()
+	training_frame_data_overlay.position = Vector2.ZERO
+	training_frame_data_overlay.size = SCREEN_SIZE
+	training_frame_data_overlay.color = Color(0.0, 0.004, 0.016, 0.88)
+	training_frame_data_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	training_frame_data_layer.add_child(training_frame_data_overlay)
+
+	training_frame_data_panel = TrainingFrameDataPanelScript.new()
+	training_frame_data_panel.position = Vector2(24.0, 18.0)
+	training_frame_data_panel.size = Vector2(1104.0, 612.0)
+	training_frame_data_overlay.add_child(training_frame_data_panel)
+
+	training_frame_data_title_label = Label.new()
+	training_frame_data_title_label.position = Vector2(24.0, 10.0)
+	training_frame_data_title_label.size = Vector2(420.0, 42.0)
+	training_frame_data_title_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	training_frame_data_title_label.add_theme_font_size_override("font_size", 27)
+	training_frame_data_title_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+	training_frame_data_title_label.add_theme_constant_override("shadow_offset_x", 2)
+	training_frame_data_title_label.add_theme_constant_override("shadow_offset_y", 2)
+	training_frame_data_title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	training_frame_data_panel.add_child(training_frame_data_title_label)
+
+	for character_index in TRAINING_FRAME_CHARACTERS.size():
+		var character_id: StringName = TRAINING_FRAME_CHARACTERS[character_index]
+		var character_data: Dictionary = CHARACTER_ROSTER[character_index]
+		var tab_button := Button.new()
+		tab_button.position = Vector2(470.0 + float(character_index) * 138.0, 13.0)
+		tab_button.size = Vector2(130.0, 38.0)
+		tab_button.text = str(character_data["name"])
+		tab_button.focus_mode = Control.FOCUS_NONE
+		tab_button.add_theme_font_size_override("font_size", 15)
+		tab_button.pressed.connect(_set_training_frame_data_character.bind(character_id))
+		training_frame_data_panel.add_child(tab_button)
+		training_frame_data_tabs.append(tab_button)
+
+	var close_button := Button.new()
+	close_button.position = Vector2(820.0, 13.0)
+	close_button.size = Vector2(258.0, 38.0)
+	close_button.text = "F2 / VIEW / ESC  •  CLOSE"
+	close_button.focus_mode = Control.FOCUS_NONE
+	close_button.add_theme_font_size_override("font_size", 13)
+	close_button.add_theme_stylebox_override(
+		"normal",
+		_make_button_style(Color("15132e"), Color("7864a8"), 2)
+	)
+	close_button.add_theme_stylebox_override(
+		"hover",
+		_make_button_style(Color("251c48"), Color("fff3c4"), 3)
+	)
+	close_button.pressed.connect(_hide_training_frame_data)
+	training_frame_data_panel.add_child(close_button)
+	_set_training_frame_data_character(&"ren")
 
 
 func _create_mode_menu() -> void:
@@ -1449,6 +1521,7 @@ func _show_character_select(selected_mode: StringName) -> void:
 	phase = &"character_select"
 	game_mode = selected_mode
 	_hide_character_guide()
+	_hide_training_frame_data()
 	_reset_camera()
 	menu_layer.visible = false
 	stage_select_layer.visible = false
@@ -1641,6 +1714,10 @@ func _confirm_character_selection() -> void:
 
 func _physics_process(delta: float) -> void:
 	_handle_system_input()
+	if training_frame_data_visible:
+		_update_ui()
+		_request_hud_redraw()
+		return
 	if phase == &"menu" or phase == &"stage_select" or phase == &"character_select":
 		if phase == &"menu":
 			_update_menu_animation(delta)
@@ -1714,6 +1791,26 @@ func _physics_process(delta: float) -> void:
 
 
 func _handle_system_input() -> void:
+	if training_frame_data_visible:
+		var frame_data_close_pressed := _training_frame_data_toggle_just_pressed()
+		frame_data_close_pressed = _key_just_pressed(KEY_M) or frame_data_close_pressed
+		frame_data_close_pressed = _key_just_pressed(KEY_ESCAPE) or frame_data_close_pressed
+		var previous_character_pressed := _key_just_pressed(KEY_LEFT)
+		previous_character_pressed = _key_just_pressed(KEY_A) or previous_character_pressed
+		var next_character_pressed := _key_just_pressed(KEY_RIGHT)
+		next_character_pressed = _key_just_pressed(KEY_D) or next_character_pressed
+		for device in Input.get_connected_joypads():
+			var previous_gamepad_pressed := _joy_button_just_pressed(device, JOY_BUTTON_LEFT_SHOULDER)
+			var next_gamepad_pressed := _joy_button_just_pressed(device, JOY_BUTTON_RIGHT_SHOULDER)
+			previous_character_pressed = previous_gamepad_pressed or previous_character_pressed
+			next_character_pressed = next_gamepad_pressed or next_character_pressed
+		if frame_data_close_pressed:
+			_hide_training_frame_data()
+		elif previous_character_pressed:
+			_cycle_training_frame_data_character(-1)
+		elif next_character_pressed:
+			_cycle_training_frame_data_character(1)
+		return
 	if phase == &"menu":
 		_handle_mode_menu_input()
 		return
@@ -1755,6 +1852,9 @@ func _handle_system_input() -> void:
 		for fighter in fighters:
 			fighter.set_debug_boxes(training_visible)
 	if game_mode == MODE_TRAINING:
+		if _training_frame_data_toggle_just_pressed():
+			_show_training_frame_data()
+			return
 		if _key_just_pressed(KEY_T):
 			_cycle_training_guard()
 		if _key_just_pressed(KEY_C):
@@ -1820,8 +1920,18 @@ func _character_guide_just_pressed() -> bool:
 	return keyboard_pressed or gamepad_pressed
 
 
+func _training_frame_data_toggle_just_pressed() -> bool:
+	var keyboard_pressed := _key_just_pressed(KEY_F2)
+	var gamepad_pressed := false
+	for device in Input.get_connected_joypads():
+		var device_pressed := _joy_button_just_pressed(device, JOY_BUTTON_BACK)
+		gamepad_pressed = device_pressed or gamepad_pressed
+	return keyboard_pressed or gamepad_pressed
+
+
 func _show_mode_menu() -> void:
 	phase = &"menu"
+	_hide_training_frame_data()
 	screen_shake = 0.0
 	_reset_camera()
 	global_hitstop = 0
@@ -1925,6 +2035,7 @@ func _start_training_mode() -> void:
 
 
 func _start_match(selected_mode: StringName) -> void:
+	_hide_training_frame_data()
 	game_mode = selected_mode
 	if game_mode == MODE_TRAINING:
 		stage_selection = STAGE_TRAINING_GRID
@@ -1963,6 +2074,7 @@ func _start_match(selected_mode: StringName) -> void:
 	training_hud_label.visible = game_mode == MODE_TRAINING
 	training_input_label.visible = game_mode == MODE_TRAINING
 	if game_mode == MODE_TRAINING:
+		_set_training_frame_data_character(fighters[0].character_id)
 		_reset_training_session()
 	cpu_controller.reset()
 	_invalidate_hud_cache()
@@ -1994,6 +2106,63 @@ func _start_round() -> void:
 	phase_frames = 120
 	announcement = "ROUND %d" % round_number
 	announcement_sub = "FIRST TO %d ROUNDS" % ROUNDS_TO_WIN
+
+
+func _show_training_frame_data() -> void:
+	if game_mode != MODE_TRAINING or phase != &"fight":
+		return
+	var p1_character_id := fighters[0].character_id if not fighters.is_empty() else &"ren"
+	_set_training_frame_data_character(p1_character_id)
+	training_frame_data_visible = true
+	training_frame_data_layer.visible = true
+	for fighter in fighters:
+		fighter.clear_input()
+
+
+func _hide_training_frame_data() -> void:
+	training_frame_data_visible = false
+	if training_frame_data_layer != null:
+		training_frame_data_layer.visible = false
+
+
+func _set_training_frame_data_character(character_id: StringName) -> void:
+	var character_index := TRAINING_FRAME_CHARACTERS.find(character_id)
+	if character_index < 0:
+		character_index = 0
+	training_frame_data_character_index = character_index
+	var selected_id: StringName = TRAINING_FRAME_CHARACTERS[character_index]
+	training_frame_data_panel.set_character(selected_id)
+	var character_data: Dictionary = CHARACTER_ROSTER[character_index]
+	var accent: Color = character_data["color"]
+	training_frame_data_title_label.text = "FRAME DATA  //  %s" % str(character_data["name"])
+	training_frame_data_title_label.add_theme_color_override("font_color", accent.lightened(0.28))
+	for tab_index in training_frame_data_tabs.size():
+		var tab_character_data: Dictionary = CHARACTER_ROSTER[tab_index]
+		var tab_accent: Color = tab_character_data["color"]
+		var selected := tab_index == character_index
+		var fill := Color(tab_accent, 0.3) if selected else Color("15132e")
+		var border := Color("fff3c4") if selected else Color(tab_accent, 0.58)
+		training_frame_data_tabs[tab_index].add_theme_color_override(
+			"font_color",
+			Color("fff3c4") if selected else tab_accent.lightened(0.2)
+		)
+		training_frame_data_tabs[tab_index].add_theme_stylebox_override(
+			"normal",
+			_make_button_style(fill, border, 3 if selected else 2)
+		)
+		training_frame_data_tabs[tab_index].add_theme_stylebox_override(
+			"hover",
+			_make_button_style(Color(tab_accent, 0.38), Color("fff3c4"), 3)
+		)
+
+
+func _cycle_training_frame_data_character(direction: int) -> void:
+	var next_index := wrapi(
+		training_frame_data_character_index + direction,
+		0,
+		TRAINING_FRAME_CHARACTERS.size()
+	)
+	_set_training_frame_data_character(TRAINING_FRAME_CHARACTERS[next_index])
 
 
 func _reset_training_session() -> void:
@@ -2554,7 +2723,7 @@ func _update_ui() -> void:
 		var displayed_hits := training_current_hits if training_combo_active else training_last_hits
 		var displayed_damage := training_current_damage if training_combo_active else training_last_damage
 		var combo_label := "CURRENT COMBO" if training_combo_active else "LAST COMBO"
-		var training_hud_text := "TRAINING DATA\n%s:  %d HIT / %d DMG\nBEST:  %d HIT / %d DMG\nDUMMY GUARD:  %s\nENTER: RESET   T: GUARD   C: CLEAR\nF1: FRAME DATA / HITBOX" % [
+		var training_hud_text := "TRAINING DATA\n%s:  %d HIT / %d DMG\nBEST:  %d HIT / %d DMG\nDUMMY GUARD:  %s\nENTER: RESET   T: GUARD   C: CLEAR\nF1: LIVE / HITBOX   F2: FRAME TABLE" % [
 			combo_label,
 			displayed_hits,
 			displayed_damage,
