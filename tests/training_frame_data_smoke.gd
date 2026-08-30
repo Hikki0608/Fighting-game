@@ -62,6 +62,8 @@ func _run() -> void:
 
 	var game := MainScript.new()
 	root.add_child(game)
+	_expect(game.TRAINING_LIVE_DATA_KEY == KEY_1, "live frame and hitbox data must use the 1 key")
+	_expect(game.TRAINING_FRAME_TABLE_KEY == KEY_2, "frame-data table must use the 2 key")
 	game.game_mode = game.MODE_TRAINING
 	game.phase = &"fight"
 	game._show_training_frame_data()
