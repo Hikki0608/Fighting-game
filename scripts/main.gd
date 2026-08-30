@@ -79,6 +79,8 @@ const TRAINING_GUARD_ALWAYS := 2
 const TRAINING_HEALTH_RECOVERY_FRAMES := 45
 const TRAINING_GUARD_RELEASE_FRAMES := 45
 const TRAINING_INPUT_HISTORY_SIZE := 8
+const TRAINING_LIVE_DATA_KEY := KEY_1
+const TRAINING_FRAME_TABLE_KEY := KEY_2
 const TRAINING_FRAME_CHARACTERS := [&"ren", &"vel"]
 const CHARACTER_ROSTER := [
 	{
@@ -633,7 +635,7 @@ func _create_training_frame_data_overlay() -> void:
 	var close_button := Button.new()
 	close_button.position = Vector2(820.0, 13.0)
 	close_button.size = Vector2(258.0, 38.0)
-	close_button.text = "F2 / VIEW / ESC  •  CLOSE"
+	close_button.text = "2 / VIEW / ESC  •  CLOSE"
 	close_button.focus_mode = Control.FOCUS_NONE
 	close_button.add_theme_font_size_override("font_size", 13)
 	close_button.add_theme_stylebox_override(
@@ -1846,7 +1848,7 @@ func _handle_system_input() -> void:
 		_show_mode_menu()
 		return
 
-	if _key_just_pressed(KEY_F1):
+	if _key_just_pressed(TRAINING_LIVE_DATA_KEY):
 		training_visible = not training_visible
 		training_label.visible = training_visible
 		for fighter in fighters:
@@ -1921,7 +1923,7 @@ func _character_guide_just_pressed() -> bool:
 
 
 func _training_frame_data_toggle_just_pressed() -> bool:
-	var keyboard_pressed := _key_just_pressed(KEY_F2)
+	var keyboard_pressed := _key_just_pressed(TRAINING_FRAME_TABLE_KEY)
 	var gamepad_pressed := false
 	for device in Input.get_connected_joypads():
 		var device_pressed := _joy_button_just_pressed(device, JOY_BUTTON_BACK)
@@ -2723,7 +2725,7 @@ func _update_ui() -> void:
 		var displayed_hits := training_current_hits if training_combo_active else training_last_hits
 		var displayed_damage := training_current_damage if training_combo_active else training_last_damage
 		var combo_label := "CURRENT COMBO" if training_combo_active else "LAST COMBO"
-		var training_hud_text := "TRAINING DATA\n%s:  %d HIT / %d DMG\nBEST:  %d HIT / %d DMG\nDUMMY GUARD:  %s\nENTER: RESET   T: GUARD   C: CLEAR\nF1: LIVE / HITBOX   F2: FRAME TABLE" % [
+		var training_hud_text := "TRAINING DATA\n%s:  %d HIT / %d DMG\nBEST:  %d HIT / %d DMG\nDUMMY GUARD:  %s\nENTER: RESET   T: GUARD   C: CLEAR\n1: LIVE / HITBOX   2: FRAME TABLE" % [
 			combo_label,
 			displayed_hits,
 			displayed_damage,
