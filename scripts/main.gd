@@ -60,7 +60,7 @@ const STAGE_ROSTER := [
 		"id": &"training_grid",
 		"name": "TRAINING GRID",
 		"subtitle": "FRAME MEASUREMENT LAB",
-		"description": "A neutral grid with clear center and distance guides.",
+		"description": "A full-width grid with uniform center and distance guides.",
 		"texture": TrainingStageTexture,
 		"accent": Color("ef3340")
 	}
@@ -374,8 +374,19 @@ func _create_arena_background() -> void:
 func _apply_selected_stage() -> void:
 	var stage_data: Dictionary = STAGE_ROSTER[stage_selection]
 	var stage_texture := stage_data["texture"] as Texture2D
-	for background in arena_backgrounds:
+	var uses_full_width_training_stage := stage_selection == STAGE_TRAINING_GRID
+	for index in arena_backgrounds.size():
+		var background := arena_backgrounds[index]
 		background.texture = stage_texture
+		background.position = Vector2(
+			ARENA_CENTER_X + float(index - 1) * SCREEN_SIZE.x,
+			SCREEN_SIZE.y * 0.5
+		)
+		background.flip_h = not uses_full_width_training_stage and index != 1
+		# The training texture is authored at the arena's complete 2016 px width.
+		# Drawing only its center sprite avoids restarting the perspective grid at
+		# the old 1152 px background seams. The colosseum keeps its three tiles.
+		background.visible = not uses_full_width_training_stage or index == 1
 
 	if arena_ambience != null:
 		var uses_arena_ambience := stage_selection == STAGE_ROYAL_COLOSSEUM
