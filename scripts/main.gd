@@ -5,6 +5,7 @@ const CpuControllerScript := preload("res://scripts/cpu_controller.gd")
 const MenuBackdropScript := preload("res://scripts/menu_backdrop.gd")
 const ArenaAmbienceScript := preload("res://scripts/arena_ambience.gd")
 const CombatEffectsScript := preload("res://scripts/combat_effects.gd")
+const TrainingInputHistoryPanelScript := preload("res://scripts/training_input_history_panel.gd")
 const ArenaBackgroundTexture := preload("res://assets/arena_background.svg")
 const TrainingStageTexture := preload("res://assets/training_stage.svg")
 const RenFighterTexture := preload("res://assets/characters/ren_fighter.png")
@@ -225,7 +226,7 @@ var training_last_damage := 0
 var training_best_hits := 0
 var training_best_damage := 0
 var training_health_recovery_frames := 0
-var training_input_history: Array[String] = []
+var training_input_history: Array[Dictionary] = []
 var training_previous_axis := Vector2.ZERO
 var camera_center_x := ARENA_CENTER_X
 var camera_zoom := CAMERA_MIN_ZOOM
@@ -240,7 +241,7 @@ var subtitle_label: Label
 var combo_labels: Array[Label] = []
 var training_label: Label
 var training_hud_label: Label
-var training_input_label: Label
+var training_input_label: TrainingInputHistoryPanel
 var mode_label: Label
 var menu_layer: CanvasLayer
 var menu_backdrop: Control
@@ -507,16 +508,10 @@ func _create_ui() -> void:
 	training_hud_label.visible = false
 	add_child(training_hud_label)
 
-	training_input_label = Label.new()
+	training_input_label = TrainingInputHistoryPanelScript.new() as TrainingInputHistoryPanel
 	training_input_label.position = Vector2(890.0, 128.0)
 	training_input_label.size = Vector2(244.0, 194.0)
-	training_input_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	training_input_label.add_theme_font_size_override("font_size", 13)
-	training_input_label.add_theme_color_override("font_color", Color("d9f7ff"))
-	training_input_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
-	training_input_label.add_theme_constant_override("shadow_offset_x", 1)
-	training_input_label.add_theme_constant_override("shadow_offset_y", 1)
-	training_input_label.add_theme_stylebox_override("normal", _make_training_panel_style(Color("ff4f86")))
+	training_input_label.add_theme_stylebox_override("panel", _make_training_panel_style(Color("ff4f86")))
 	training_input_label.visible = false
 	add_child(training_input_label)
 
@@ -1921,42 +1916,24 @@ func _capture_training_input() -> void:
 	if bool(pressed.get("throw", false)):
 		buttons.append("TH")
 
-	var direction := _training_direction_text(axis)
-	var direction_changed := axis != training_previous_axis
-	var entry := ""
-	if not buttons.is_empty():
-		entry = " + ".join(buttons)
-		if direction != "":
-			entry = "%s + %s" % [direction, entry]
-	elif direction_changed and direction != "":
-		entry = direction
-	if not entry.is_empty():
+	var direction := Vector2i(roundi(axis.x), roundi(axis.y))
+	var previous_direction := Vector2i(
+		roundi(training_previous_axis.x),
+		roundi(training_previous_axis.y)
+	)
+	var direction_changed := direction != previous_direction
+	var should_record := not buttons.is_empty() or (
+		direction_changed and direction != Vector2i.ZERO
+	)
+	if should_record:
+		var entry := {
+			"direction": direction,
+			"buttons": buttons.duplicate()
+		}
 		training_input_history.push_front(entry)
 		if training_input_history.size() > TRAINING_INPUT_HISTORY_SIZE:
 			training_input_history.pop_back()
 	training_previous_axis = axis
-
-
-func _training_direction_text(axis: Vector2) -> String:
-	match Vector2i(roundi(axis.x), roundi(axis.y)):
-		Vector2i(-1, -1):
-			return "↖"
-		Vector2i(0, -1):
-			return "↑"
-		Vector2i(1, -1):
-			return "↗"
-		Vector2i(-1, 0):
-			return "←"
-		Vector2i(1, 0):
-			return "→"
-		Vector2i(-1, 1):
-			return "↙"
-		Vector2i(0, 1):
-			return "↓"
-		Vector2i(1, 1):
-			return "↘"
-		_:
-			return ""
 
 
 func _finish_round() -> void:
@@ -2324,10 +2301,7 @@ func _update_ui() -> void:
 			_training_guard_name()
 		]
 		_set_label_text_if_changed(training_hud_label, training_hud_text)
-		var input_text := "INPUT HISTORY\n%s" % (
-			"—" if training_input_history.is_empty() else "\n".join(training_input_history)
-		)
-		_set_label_text_if_changed(training_input_label, input_text)
+		training_input_label.set_history(training_input_history)
 	if training_visible:
 		var training_text := "FRAME DATA / HITBOX VIEW\nP1  %s\nP2  %s\nDistance: %.1f px    Enter: reset round" % [
 			fighters[0].frame_data_text(),
