@@ -208,6 +208,8 @@ var announcement_sub := ""
 var combat_callout_frames := 0
 var combo_display_hits := [0, 0]
 var combo_display_frames := [0, 0]
+var player_callout_texts: Array[String] = ["", ""]
+var player_callout_frames: Array[int] = [0, 0]
 var game_mode: StringName = MODE_SOLO
 var mode_selection := 0
 var stage_selection := STAGE_ROYAL_COLOSSEUM
@@ -239,6 +241,7 @@ var combat_effects: CombatEffects
 var announcement_label: Label
 var subtitle_label: Label
 var combo_labels: Array[Label] = []
+var player_callout_labels: Array[Label] = []
 var training_label: Label
 var training_hud_label: Label
 var training_input_label: TrainingInputHistoryPanel
@@ -456,6 +459,27 @@ func _create_ui() -> void:
 	add_child(subtitle_label)
 
 	for player_index in 2:
+		var callout_label := Label.new()
+		callout_label.position = Vector2(42.0 if player_index == 0 else 770.0, 230.0)
+		callout_label.size = Vector2(340.0, 44.0)
+		callout_label.horizontal_alignment = (
+			HORIZONTAL_ALIGNMENT_LEFT
+			if player_index == 0
+			else HORIZONTAL_ALIGNMENT_RIGHT
+		)
+		callout_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		callout_label.add_theme_font_size_override("font_size", 18)
+		callout_label.add_theme_color_override(
+			"font_color",
+			fighters[player_index].body_color.lightened(0.35)
+		)
+		callout_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+		callout_label.add_theme_constant_override("shadow_offset_x", 2)
+		callout_label.add_theme_constant_override("shadow_offset_y", 2)
+		callout_label.visible = false
+		add_child(callout_label)
+		player_callout_labels.append(callout_label)
+
 		var combo_label := Label.new()
 		combo_label.position = Vector2(42.0 if player_index == 0 else 770.0, 282.0)
 		combo_label.size = Vector2(340.0, 44.0)
@@ -1047,6 +1071,8 @@ func _show_stage_select(selected_mode: StringName) -> void:
 	subtitle_label.visible = false
 	for combo_label in combo_labels:
 		combo_label.visible = false
+	for callout_label in player_callout_labels:
+		callout_label.visible = false
 	mode_label.visible = false
 	training_label.visible = false
 	training_hud_label.visible = false
@@ -1281,6 +1307,8 @@ func _show_character_select(selected_mode: StringName) -> void:
 	subtitle_label.visible = false
 	for combo_label in combo_labels:
 		combo_label.visible = false
+	for callout_label in player_callout_labels:
+		callout_label.visible = false
 	mode_label.visible = false
 	training_label.visible = false
 	training_hud_label.visible = false
@@ -1584,6 +1612,8 @@ func _show_mode_menu() -> void:
 	subtitle_label.visible = false
 	for combo_label in combo_labels:
 		combo_label.visible = false
+	for callout_label in player_callout_labels:
+		callout_label.visible = false
 	mode_label.visible = false
 	menu_layer.visible = true
 	stage_select_layer.visible = false
@@ -1683,6 +1713,8 @@ func _start_match(selected_mode: StringName) -> void:
 	subtitle_label.visible = true
 	for combo_label in combo_labels:
 		combo_label.visible = true
+	for callout_label in player_callout_labels:
+		callout_label.visible = true
 	mode_label.visible = true
 	for fighter in fighters:
 		fighter.visible = true
@@ -1948,17 +1980,24 @@ func _finish_round() -> void:
 
 	if winner >= 0:
 		wins[winner] += 1
-		announcement = "K.O." if round_frames > 0 else "TIME UP"
-		announcement_sub = "%s TAKES THE ROUND" % fighters[winner].fighter_name
+		var finished_by_ko := round_frames > 0
+		announcement = "K.O." if finished_by_ko else ""
+		announcement_sub = ""
+		var round_result := "%s TAKES THE ROUND" % fighters[winner].fighter_name
+		if not finished_by_ko:
+			round_result = "TIME UP  •  %s" % round_result
+		_show_player_callout(winner, round_result, 180)
 	else:
-		announcement = "DRAW"
-		announcement_sub = "NO ROUND AWARDED"
+		announcement = ""
+		announcement_sub = ""
+		_show_player_callout(0, "DRAW", 180)
+		_show_player_callout(1, "DRAW", 180)
 	if arena_ambience != null and arena_ambience.visible:
 		arena_ambience.celebrate()
 
 	if winner >= 0 and wins[winner] >= ROUNDS_TO_WIN:
 		phase = &"match_over"
-		announcement = "%s WINS" % fighters[winner].fighter_name
+		_show_player_callout(winner, "%s WINS" % fighters[winner].fighter_name, -1)
 		announcement_sub = "PRESS ENTER TO REMATCH  •  M FOR MODE SELECT"
 	else:
 		phase = &"round_over"
@@ -2132,16 +2171,9 @@ func _apply_attack_hit(
 		"facing": attacker.facing
 	})
 	if result.back_throw:
-		announcement_sub = "BACK THROW"
-		combat_callout_frames = 60
-	elif result.combo > 1 and not result.blocked:
-		# Combo counts use player-side labels; keep the center clear for round,
-		# throw, and super callouts.
-		announcement_sub = ""
-		combat_callout_frames = 0
+		_show_player_callout(attacker.player_id, "BACK THROW", 60)
 	elif is_super:
-		announcement_sub = str(attack_data.get("label", "SUPER"))
-		combat_callout_frames = 60
+		_show_player_callout(attacker.player_id, str(attack_data.get("label", "SUPER")), 60)
 		if arena_ambience != null and arena_ambience.visible:
 			arena_ambience.pulse_for_super()
 	if result.ko:
@@ -2192,6 +2224,12 @@ func _update_effects() -> void:
 		combat_callout_frames -= 1
 		if combat_callout_frames == 0 and phase == &"fight":
 			announcement_sub = ""
+	for player_index in player_callout_frames.size():
+		if player_callout_frames[player_index] <= 0:
+			continue
+		player_callout_frames[player_index] -= 1
+		if player_callout_frames[player_index] == 0:
+			player_callout_texts[player_index] = ""
 
 
 func _reset_camera(use_battle_zoom := false) -> void:
@@ -2281,6 +2319,7 @@ func _apply_world_transform() -> void:
 func _update_ui() -> void:
 	_set_label_text_if_changed(announcement_label, announcement)
 	_set_label_text_if_changed(subtitle_label, announcement_sub)
+	_update_player_callout_labels()
 	_update_combo_labels()
 	if game_mode == MODE_SOLO:
 		_set_label_text_if_changed(mode_label, "1 PLAYER  •  CPU STANDARD")
@@ -2311,6 +2350,14 @@ func _update_ui() -> void:
 		_set_label_text_if_changed(training_label, training_text)
 
 
+func _update_player_callout_labels() -> void:
+	for player_index in player_callout_labels.size():
+		_set_label_text_if_changed(
+			player_callout_labels[player_index],
+			player_callout_texts[player_index]
+		)
+
+
 func _update_combo_labels() -> void:
 	for attacker_index in combo_labels.size():
 		var combo_text := ""
@@ -2332,11 +2379,22 @@ func _update_combo_labels() -> void:
 		_set_label_text_if_changed(combo_labels[attacker_index], combo_text)
 
 
+func _show_player_callout(player_index: int, text: String, frames := 60) -> void:
+	if player_index < 0 or player_index >= player_callout_texts.size():
+		return
+	player_callout_texts[player_index] = text
+	player_callout_frames[player_index] = frames
+
+
 func _reset_combo_display() -> void:
 	combo_display_hits = [0, 0]
 	combo_display_frames = [0, 0]
+	player_callout_texts = ["", ""]
+	player_callout_frames = [0, 0]
 	for combo_label in combo_labels:
 		_set_label_text_if_changed(combo_label, "")
+	for callout_label in player_callout_labels:
+		_set_label_text_if_changed(callout_label, "")
 
 
 func _set_label_text_if_changed(label: Label, next_text: String) -> void:
