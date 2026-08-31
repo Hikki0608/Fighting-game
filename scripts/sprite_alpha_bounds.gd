@@ -6,6 +6,7 @@ extends RefCounted
 # which is especially important for the Web build.
 const COLUMNS_PER_ROW := 5
 const ROWS_PER_SHEET := 5
+const SHEETS_PER_CHARACTER := 5
 const VALUES_PER_FRAME := 4
 
 const REN_BOUNDS := [
@@ -32,7 +33,7 @@ const REN_BOUNDS := [
 	83, 37, 201, 256, 105, 36, 256, 256, 67, 44, 248, 256, 57, 48, 182, 256, 58, 41, 172, 256,
 	82, 55, 190, 256, 80, 58, 188, 256, 90, 66, 204, 256, 81, 70, 190, 256, 59, 61, 171, 256,
 	74, 101, 191, 256, 71, 101, 188, 254, 86, 116, 209, 255, 73, 108, 189, 255, 64, 109, 178, 256,
-	49, 47, 256, 215, 61, 132, 256, 74, 100, 252, 218, 60, 97, 233, 215, 62, 33, 173, 211,
+	49, 47, 256, 215, 61, 132, 256, 215, 74, 100, 252, 218, 60, 97, 233, 215, 62, 33, 173, 211,
 	71, 0, 200, 223, 83, 74, 215, 223, 92, 67, 210, 224, 70, 0, 204, 233, 56, 3, 183, 233,
 ]
 
@@ -71,7 +72,7 @@ static func rect_for(character_id: StringName, sprite_frame: Vector3i) -> Rect2:
 		return Rect2()
 	if (
 		sprite_frame.x < 0
-		or sprite_frame.x >= 5
+		or sprite_frame.x >= SHEETS_PER_CHARACTER
 		or sprite_frame.y < 0
 		or sprite_frame.y >= COLUMNS_PER_ROW
 		or sprite_frame.z < 0
@@ -83,6 +84,8 @@ static func rect_for(character_id: StringName, sprite_frame: Vector3i) -> Rect2:
 		+ sprite_frame.y
 	)
 	var value_index := frame_index * VALUES_PER_FRAME
+	if value_index < 0 or value_index + VALUES_PER_FRAME > bounds.size():
+		return Rect2()
 	var left := float(bounds[value_index])
 	var top := float(bounds[value_index + 1])
 	var right := float(bounds[value_index + 2])
