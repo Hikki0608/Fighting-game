@@ -29,6 +29,34 @@ const PHASE_COLORS := {
 	&"blockstun": Color("bd68ff"),
 	&"knockdown": Color("a82d45")
 }
+const ACTION_DISPLAY_NAMES := {
+	&"light": "STANDING LIGHT",
+	&"crouch_light": "CROUCH LIGHT",
+	&"heavy": "STANDING HEAVY",
+	&"forward_heavy": "OVERHEAD",
+	&"crouch_heavy": "ANTI-AIR",
+	&"throw": "THROW",
+	&"jump_light": "JUMP LIGHT",
+	&"jump_heavy": "JUMP HEAVY",
+	&"ren_pulse": "AZURE PULSE",
+	&"ren_palm": "FLASH PALM",
+	&"ren_rise": "SKY BREAK",
+	&"ren_dive": "COMET DIVE",
+	&"ren_super": "AZURE ZERO",
+	&"vel_rake": "CRIMSON RAKE",
+	&"vel_pounce": "PREDATOR POUNCE",
+	&"vel_rise": "HUNTER RISE",
+	&"vel_shadow": "SHADOW HUNT",
+	&"vel_dive": "REAPER DIVE",
+	&"vel_super": "RED ECLIPSE"
+}
+const LEGEND_ENTRIES := [
+	[&"startup", "START"],
+	[&"active", "ACTIVE"],
+	[&"recovery", "RECOV"],
+	[&"hitstop", "STOP"],
+	[&"hitstun", "HIT"]
+]
 const CAPTURE_ACTIVITY_STATES := [
 	&"jump",
 	&"forward_step",
@@ -95,9 +123,9 @@ func is_frozen() -> bool:
 
 func capture_status_text() -> String:
 	if recording:
-		return "● RECORDING"
+		return "REC - RECORDING"
 	if completed_capture:
-		return "PAUSED  •  NEXT ACTION TO RESUME"
+		return "PAUSED - NEXT ACTION TO RESUME"
 	return "WAITING FOR ACTION"
 
 
@@ -183,13 +211,25 @@ func _action_summary(row: Dictionary, state: StringName) -> String:
 	if FighterScript.ATTACKS.has(state):
 		var attack: Dictionary = FighterScript.ATTACKS[state]
 		total_frames = int(attack.startup + attack.active + attack.recovery)
-	return "%s  •  発生 %sF / 全体 %dF / ヒット %s / ガード %s" % [
-		str(row["name"]),
+	var hit_advantage := "VAR" if state == &"ren_pulse" else _ascii_advantage(row["hit_advantage"])
+	var block_advantage := "VAR" if state == &"ren_pulse" else _ascii_advantage(row["block_advantage"])
+	return "%s | START %sF / TOTAL %dF / HIT %s / GUARD %s" % [
+		str(ACTION_DISPLAY_NAMES.get(state, "ACTION")),
 		str(row["startup"]),
 		total_frames,
-		str(row["hit_advantage"]),
-		str(row["block_advantage"])
+		hit_advantage,
+		block_advantage
 	]
+
+
+func _ascii_advantage(value: Variant) -> String:
+	var text := str(value)
+	if text == "DOWN":
+		return text
+	var unsigned_text := text.trim_prefix("+").trim_prefix("-")
+	if unsigned_text.is_valid_int():
+		return text
+	return "N/A"
 
 
 func _apply_panel_style() -> void:
@@ -212,7 +252,7 @@ func _draw() -> void:
 	draw_string(
 		font,
 		Vector2(PANEL_PADDING, 18.0),
-		"FRAME BAR  •  LAST %d FRAMES" % MAX_FRAMES,
+		"FRAME BAR - LAST %d FRAMES" % MAX_FRAMES,
 		HORIZONTAL_ALIGNMENT_LEFT,
 		260.0,
 		TITLE_FONT_SIZE,
@@ -233,15 +273,8 @@ func _draw() -> void:
 
 
 func _draw_legend(font: Font) -> void:
-	var entries := [
-		[&"startup", "始動"],
-		[&"active", "攻撃"],
-		[&"recovery", "硬直"],
-		[&"hitstop", "停止"],
-		[&"hitstun", "やられ"]
-	]
 	var x := size.x - PANEL_PADDING - 320.0
-	for entry in entries:
+	for entry in LEGEND_ENTRIES:
 		var phase: StringName = entry[0]
 		draw_rect(Rect2(x, 8.0, 10.0, 10.0), PHASE_COLORS[phase], true)
 		draw_string(

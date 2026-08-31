@@ -2,6 +2,7 @@ extends SceneTree
 
 const FighterScript := preload("res://scripts/fighter.gd")
 const FrameBarScript := preload("res://scripts/training_frame_bar.gd")
+const FrameDataPanelScript := preload("res://scripts/training_frame_data_panel.gd")
 const MainScript := preload("res://scripts/main.gd")
 
 var failures: Array[String] = []
@@ -14,6 +15,13 @@ func _initialize() -> void:
 func _expect(condition: bool, message: String) -> void:
 	if not condition:
 		failures.append(message)
+
+
+func _is_ascii(text: String) -> bool:
+	for character_byte in text.to_utf8_buffer():
+		if character_byte > 127:
+			return false
+	return true
 
 
 func _run() -> void:
@@ -51,9 +59,30 @@ func _run() -> void:
 	_expect(frame_bar.latest_phase(0) == &"movement", "steps must render as movement frames")
 	_expect(frame_bar.latest_phase(1) == &"hitstun", "damage reactions must render as hitstun")
 	_expect(
-		frame_bar.last_action_summaries[0].contains("立ち弱"),
+		frame_bar.last_action_summaries[0].contains("STANDING LIGHT"),
 		"the bar must retain the latest move summary"
 	)
+	_expect(
+		_is_ascii(frame_bar.last_action_summaries[0]),
+		"move summaries must use Web-safe ASCII characters"
+	)
+	_expect(
+		_is_ascii(frame_bar.capture_status_text()),
+		"recording status text must use Web-safe ASCII characters"
+	)
+	for legend_entry in FrameBarScript.LEGEND_ENTRIES:
+		_expect(_is_ascii(str(legend_entry[1])), "legend labels must use Web-safe ASCII characters")
+	for character_id in [&"ren", &"vel"]:
+		for frame_row in FrameDataPanelScript.build_rows(character_id):
+			var action_state := StringName(frame_row["state"])
+			_expect(
+				FrameBarScript.ACTION_DISPLAY_NAMES.has(action_state),
+				"every frame-data action must have an ASCII display name"
+			)
+			_expect(
+				_is_ascii(frame_bar._action_summary(frame_row, action_state)),
+				"every move summary must use Web-safe ASCII characters"
+			)
 
 	p1.state = &"forward_step"
 	p2.state = &"hitstun"
@@ -77,6 +106,10 @@ func _run() -> void:
 	_expect(
 		frame_bar.capture_status_text().begins_with("PAUSED"),
 		"the frozen bar must clearly display its paused state"
+	)
+	_expect(
+		_is_ascii(frame_bar.capture_status_text()),
+		"paused status text must use Web-safe ASCII characters"
 	)
 	var frozen_history_size: int = frame_bar.history_size(0)
 	for idle_frame in 12:
