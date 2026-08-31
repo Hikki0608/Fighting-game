@@ -32,6 +32,7 @@ func _run() -> void:
 	p1.state = &"light"
 	p1.state_frame = 1
 	frame_bar.record_frame([p1, p2], false)
+	_expect(frame_bar.is_recording(), "the frame bar must start recording when an action begins")
 	_expect(frame_bar.latest_phase(0) == &"startup", "attack startup must render in the startup phase")
 	p1.state_frame = 5
 	frame_bar.record_frame([p1, p2], false)
@@ -68,6 +69,31 @@ func _run() -> void:
 		"both full frame rows must be rendered"
 	)
 	_expect(frame_bar.last_drawn_run_labels > 0, "continuous frame runs must display their duration")
+
+	p1.state = &"idle"
+	p2.state = &"idle"
+	frame_bar.record_frame([p1, p2], false)
+	_expect(frame_bar.is_frozen(), "the frame bar must freeze when both fighters finish acting")
+	_expect(
+		frame_bar.capture_status_text().begins_with("PAUSED"),
+		"the frozen bar must clearly display its paused state"
+	)
+	var frozen_history_size: int = frame_bar.history_size(0)
+	for idle_frame in 12:
+		p1.state_frame = idle_frame
+		p2.state_frame = idle_frame
+		frame_bar.record_frame([p1, p2], false)
+	_expect(
+		frame_bar.history_size(0) == frozen_history_size,
+		"idle frames must not overwrite a completed capture"
+	)
+
+	p1.state = &"heavy"
+	p1.state_frame = 1
+	frame_bar.record_frame([p1, p2], false)
+	_expect(frame_bar.is_recording(), "the next action must automatically resume recording")
+	_expect(frame_bar.history_size(0) == 1, "a new action must start a fresh frame capture")
+	_expect(frame_bar.latest_phase(0) == &"startup", "the resumed capture must begin at startup")
 
 	var game := MainScript.new()
 	root.add_child(game)

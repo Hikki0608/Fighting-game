@@ -29,12 +29,23 @@ const PHASE_COLORS := {
 	&"blockstun": Color("bd68ff"),
 	&"knockdown": Color("a82d45")
 }
+const CAPTURE_ACTIVITY_STATES := [
+	&"jump",
+	&"forward_step",
+	&"back_step",
+	&"vel_shadow",
+	&"hitstun",
+	&"blockstun",
+	&"knockdown"
+]
 
 var histories: Array = [[], []]
 var last_action_summaries: Array[String] = ["NO ACTION RECORDED", "NO ACTION RECORDED"]
 var row_cache: Dictionary = {}
 var last_drawn_cell_count := 0
 var last_drawn_run_labels := 0
+var recording := false
+var completed_capture := false
 
 
 func _ready() -> void:
@@ -44,6 +55,11 @@ func _ready() -> void:
 func record_frame(fighters: Array, hitstop_active := false) -> void:
 	if fighters.size() < 2:
 		return
+	var action_in_progress := hitstop_active or _fighters_have_capture_activity(fighters)
+	if not recording:
+		if not action_in_progress:
+			return
+		_begin_capture()
 	for player_index in 2:
 		var fighter = fighters[player_index]
 		var snapshot := capture_fighter_frame(fighter, hitstop_active)
@@ -54,6 +70,9 @@ func record_frame(fighters: Array, hitstop_active := false) -> void:
 		var action_row := _frame_row_for(fighter.character_id, fighter.state)
 		if not action_row.is_empty():
 			last_action_summaries[player_index] = _action_summary(action_row, fighter.state)
+	if not action_in_progress:
+		recording = false
+		completed_capture = true
 	if visible:
 		queue_redraw()
 
@@ -61,7 +80,25 @@ func record_frame(fighters: Array, hitstop_active := false) -> void:
 func clear_history() -> void:
 	histories = [[], []]
 	last_action_summaries = ["NO ACTION RECORDED", "NO ACTION RECORDED"]
+	recording = false
+	completed_capture = false
 	queue_redraw()
+
+
+func is_recording() -> bool:
+	return recording
+
+
+func is_frozen() -> bool:
+	return completed_capture and not recording
+
+
+func capture_status_text() -> String:
+	if recording:
+		return "● RECORDING"
+	if completed_capture:
+		return "PAUSED  •  NEXT ACTION TO RESUME"
+	return "WAITING FOR ACTION"
 
 
 func history_size(player_index: int) -> int:
@@ -75,6 +112,20 @@ func latest_phase(player_index: int) -> StringName:
 		return &""
 	var history: Array = histories[player_index]
 	return StringName(history.back().get("phase", &""))
+
+
+func _begin_capture() -> void:
+	histories = [[], []]
+	last_action_summaries = ["NO ACTION RECORDED", "NO ACTION RECORDED"]
+	recording = true
+	completed_capture = false
+
+
+func _fighters_have_capture_activity(fighters: Array) -> bool:
+	for fighter in fighters:
+		if fighter.is_attacking() or fighter.state in CAPTURE_ACTIVITY_STATES:
+			return true
+	return false
 
 
 static func capture_fighter_frame(fighter, hitstop_active := false) -> Dictionary:
@@ -163,9 +214,18 @@ func _draw() -> void:
 		Vector2(PANEL_PADDING, 18.0),
 		"FRAME BAR  •  LAST %d FRAMES" % MAX_FRAMES,
 		HORIZONTAL_ALIGNMENT_LEFT,
-		300.0,
+		260.0,
 		TITLE_FONT_SIZE,
 		Color("f2fdff")
+	)
+	draw_string(
+		font,
+		Vector2(290.0, 18.0),
+		capture_status_text(),
+		HORIZONTAL_ALIGNMENT_LEFT,
+		390.0,
+		FONT_SIZE,
+		Color("ffdc72") if recording else MUTED_TEXT_COLOR
 	)
 	_draw_legend(font)
 	for player_index in 2:
