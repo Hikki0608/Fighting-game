@@ -1,6 +1,7 @@
 extends SceneTree
 
 const MainScript := preload("res://scripts/main.gd")
+const SpriteAlphaBoundsScript := preload("res://scripts/sprite_alpha_bounds.gd")
 
 var failures: Array[String] = []
 
@@ -15,6 +16,42 @@ func _expect(condition: bool, message: String) -> void:
 
 
 func _run() -> void:
+	var expected_value_count := (
+		SpriteAlphaBoundsScript.SHEETS_PER_CHARACTER
+		* SpriteAlphaBoundsScript.ROWS_PER_SHEET
+		* SpriteAlphaBoundsScript.COLUMNS_PER_ROW
+		* SpriteAlphaBoundsScript.VALUES_PER_FRAME
+	)
+	_expect(
+		SpriteAlphaBoundsScript.REN_BOUNDS.size() == expected_value_count,
+		"Ren sprite bounds must contain four values for all 125 frames"
+	)
+	_expect(
+		SpriteAlphaBoundsScript.VEL_BOUNDS.size() == expected_value_count,
+		"Vel sprite bounds must contain four values for all 125 frames"
+	)
+	for character_id in [&"ren", &"vel"]:
+		for sheet_index in SpriteAlphaBoundsScript.SHEETS_PER_CHARACTER:
+			for row_index in SpriteAlphaBoundsScript.ROWS_PER_SHEET:
+				for column_index in SpriteAlphaBoundsScript.COLUMNS_PER_ROW:
+					var frame_bounds := SpriteAlphaBoundsScript.rect_for(
+						character_id,
+						Vector3i(sheet_index, column_index, row_index)
+					)
+					_expect(
+						frame_bounds.has_area(),
+						"every authored sprite frame must have valid alpha bounds"
+					)
+	var repaired_ren_frame := SpriteAlphaBoundsScript.rect_for(&"ren", Vector3i(4, 1, 3))
+	_expect(
+		repaired_ren_frame == Rect2(61.0, 132.0, 195.0, 83.0),
+		"Ren knockdown frame two must retain its complete generated bounds"
+	)
+	_expect(
+		not SpriteAlphaBoundsScript.rect_for(&"ren", Vector3i(5, 0, 0)).has_area(),
+		"out-of-range sprite coordinates must return an empty safe fallback"
+	)
+
 	var game := MainScript.new()
 	root.add_child(game)
 	var ren: Fighter = game.fighters[0]
