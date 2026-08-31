@@ -7,6 +7,7 @@ const ArenaAmbienceScript := preload("res://scripts/arena_ambience.gd")
 const CombatEffectsScript := preload("res://scripts/combat_effects.gd")
 const TrainingInputHistoryPanelScript := preload("res://scripts/training_input_history_panel.gd")
 const TrainingFrameDataPanelScript := preload("res://scripts/training_frame_data_panel.gd")
+const TrainingFrameBarScript := preload("res://scripts/training_frame_bar.gd")
 const ArenaBackgroundTexture := preload("res://assets/arena_background.svg")
 const TrainingStageTexture := preload("res://assets/training_stage.svg")
 const RenFighterTexture := preload("res://assets/characters/ren_fighter.png")
@@ -280,6 +281,7 @@ var player_callout_labels: Array[Label] = []
 var training_label: Label
 var training_hud_label: Label
 var training_input_label: TrainingInputHistoryPanel
+var training_frame_bar
 var training_frame_data_layer: CanvasLayer
 var training_frame_data_overlay: ColorRect
 var training_frame_data_panel
@@ -586,6 +588,13 @@ func _create_ui() -> void:
 	training_input_label.add_theme_stylebox_override("panel", _make_training_panel_style(Color("ff4f86")))
 	training_input_label.visible = false
 	add_child(training_input_label)
+
+	training_frame_bar = TrainingFrameBarScript.new()
+	training_frame_bar.position = Vector2(56.0, 450.0)
+	training_frame_bar.size = Vector2(1040.0, 132.0)
+	training_frame_bar.z_index = 5
+	training_frame_bar.visible = false
+	add_child(training_frame_bar)
 
 	_create_training_frame_data_overlay()
 
@@ -1538,6 +1547,7 @@ func _show_character_select(selected_mode: StringName) -> void:
 	training_label.visible = false
 	training_hud_label.visible = false
 	training_input_label.visible = false
+	training_frame_bar.visible = false
 	selecting_player = 0
 	character_selection = [0, 1]
 	for fighter in fighters:
@@ -1743,6 +1753,8 @@ func _physics_process(delta: float) -> void:
 
 	if global_hitstop > 0:
 		global_hitstop -= 1
+		if game_mode == MODE_TRAINING and phase == &"fight":
+			training_frame_bar.record_frame(fighters, true)
 		_update_effects()
 		_update_ui()
 		_request_hud_redraw()
@@ -1787,6 +1799,8 @@ func _physics_process(delta: float) -> void:
 			fighters[i].simulate(fighters[1 - i], false)
 		_constrain_fighters_to_camera()
 
+	if game_mode == MODE_TRAINING and phase == &"fight":
+		training_frame_bar.record_frame(fighters, false)
 	_update_effects()
 	_update_ui()
 	_request_hud_redraw()
@@ -1849,10 +1863,7 @@ func _handle_system_input() -> void:
 		return
 
 	if _key_just_pressed(TRAINING_LIVE_DATA_KEY):
-		training_visible = not training_visible
-		training_label.visible = training_visible
-		for fighter in fighters:
-			fighter.set_debug_boxes(training_visible)
+		_set_training_live_data_visible(not training_visible)
 	if game_mode == MODE_TRAINING:
 		if _training_frame_data_toggle_just_pressed():
 			_show_training_frame_data()
@@ -1943,6 +1954,8 @@ func _show_mode_menu() -> void:
 	training_label.visible = false
 	training_hud_label.visible = false
 	training_input_label.visible = false
+	training_frame_bar.visible = false
+	training_frame_bar.clear_history()
 	announcement_label.visible = false
 	subtitle_label.visible = false
 	for combo_label in combo_labels:
@@ -2075,12 +2088,22 @@ func _start_match(selected_mode: StringName) -> void:
 	training_label.visible = false
 	training_hud_label.visible = game_mode == MODE_TRAINING
 	training_input_label.visible = game_mode == MODE_TRAINING
+	training_frame_bar.visible = false
+	training_frame_bar.clear_history()
 	if game_mode == MODE_TRAINING:
 		_set_training_frame_data_character(fighters[0].character_id)
 		_reset_training_session()
 	cpu_controller.reset()
 	_invalidate_hud_cache()
 	_start_round()
+
+
+func _set_training_live_data_visible(enabled: bool) -> void:
+	training_visible = enabled
+	training_label.visible = enabled
+	training_frame_bar.visible = enabled and game_mode == MODE_TRAINING
+	for fighter in fighters:
+		fighter.set_debug_boxes(enabled)
 
 
 func _start_round() -> void:
@@ -2181,6 +2204,7 @@ func _reset_training_session() -> void:
 	training_health_recovery_frames = 0
 	training_input_history.clear()
 	training_previous_axis = Vector2.ZERO
+	training_frame_bar.clear_history()
 
 
 func _reset_training_position() -> void:
@@ -2208,6 +2232,7 @@ func _reset_training_position() -> void:
 	training_health_recovery_frames = 0
 	training_input_history.clear()
 	training_previous_axis = Vector2.ZERO
+	training_frame_bar.clear_history()
 	announcement = ""
 	announcement_sub = "POSITIONS RESET"
 	combat_callout_frames = 45
@@ -2219,6 +2244,7 @@ func _clear_training_records() -> void:
 	training_last_damage = 0
 	training_best_hits = 0
 	training_best_damage = 0
+	training_frame_bar.clear_history()
 	if not training_combo_active:
 		training_current_hits = 0
 		training_current_damage = 0
@@ -2725,7 +2751,7 @@ func _update_ui() -> void:
 		var displayed_hits := training_current_hits if training_combo_active else training_last_hits
 		var displayed_damage := training_current_damage if training_combo_active else training_last_damage
 		var combo_label := "CURRENT COMBO" if training_combo_active else "LAST COMBO"
-		var training_hud_text := "TRAINING DATA\n%s:  %d HIT / %d DMG\nBEST:  %d HIT / %d DMG\nDUMMY GUARD:  %s\nENTER: RESET   T: GUARD   C: CLEAR\n1: LIVE / HITBOX   2: FRAME TABLE" % [
+		var training_hud_text := "TRAINING DATA\n%s:  %d HIT / %d DMG\nBEST:  %d HIT / %d DMG\nDUMMY GUARD:  %s\nENTER: RESET   T: GUARD   C: CLEAR\n1: LIVE / BAR   2: FRAME TABLE" % [
 			combo_label,
 			displayed_hits,
 			displayed_damage,
